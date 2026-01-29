@@ -1,0 +1,98 @@
+{
+  "pages": {
+    "/_not-found/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/app/_not-found/page-6a9f4a39b2738ce7.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/css/d7e5656acf886e4c.css",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/app/layout-487c25f59c01d3b0.js"
+    ],
+    "/login/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/app/login/page-bd02dc9d1dba80aa.js"
+    ],
+    "/notes/[id]/history/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/app/notes/[id]/history/page-e59da344a17147ed.js"
+    ],
+    "/notes/[id]/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/notes/[id]/page-ed90f0456029ceab.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/app/page-e205009794d047fb.js"
+    ],
+    "/patients/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/patients/page-df6372b6240466cc.js"
+    ],
+    "/dashboard/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/dashboard/page-3adbcb933a40e35a.js"
+    ],
+    "/notes/new/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/notes/new/page-ea47215c6f092ce9.js"
+    ],
+    "/patients/new/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/patients/new/page-330c1a594d00ab03.js"
+    ],
+    "/patients/[id]/page": [
+      "static/chunks/webpack-5e40397c9eb56dba.js",
+      "static/chunks/fd9d1056-cc804a1e952f84f5.js",
+      "static/chunks/23-b6b05d7f795c173f.js",
+      "static/chunks/main-app-0267354f397fdacc.js",
+      "static/chunks/236-af07309ef3ae5acb.js",
+      "static/chunks/48-aca1b4eafee78d1f.js",
+      "static/chunks/app/patients/[id]/page-f86eda51a1409947.js"
+    ]
+  }
+}

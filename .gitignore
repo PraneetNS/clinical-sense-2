@@ -1,0 +1,12 @@
+# Node dependencies
+node_modules/
+
+# Env files
+.env
+
+# Databases
+*.db
+
+# Build output
+dist/
+build/
