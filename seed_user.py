@@ -5,7 +5,7 @@ from app.core import security
 import os
 
 # Database Path
-DB_URL = "sqlite:///./clinical_doc.db"
+DB_URL = "postgresql://clinical_sense_user:KpEPHbhShfvI0dfjGN7rCHHaInlu5ZPX@dpg-d5tks514tr6s73b93odg-a.oregon-postgres.render.com/clinical_sense"
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

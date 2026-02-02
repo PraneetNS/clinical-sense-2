@@ -26,9 +26,11 @@ import uuid
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Clinical Documentation Assistant - Secure AI restructuring for clinical notes.",
-    docs_url=None if settings.ENV == Environment.production else "/docs",
-    redoc_url=None if settings.ENV == Environment.production else "/redoc",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url=f"{settings.API_V1_STR}/docs",
+    redoc_url=f"{settings.API_V1_STR}/redoc",
 )
+
 
 from fastapi.staticfiles import StaticFiles
 import os
