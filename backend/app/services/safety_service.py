@@ -26,7 +26,7 @@ class SafetyService:
     # Maps unsafe regex -> safe replacement string (or function)
     SANITIZATION_RULES = [
         (r"(?i)\bpatient should take\b", "Patient to take"),
-        (r"(?i)\brecommend starting\b", "Consideration for starting"), # Still borderline, but softer
+        (r"(?i)\brecommend starting\b", "Consideration for starting"),  # Still borderline, but softer
         (r"(?i)\bprognosis is good\b", "Prognosis appears favorable"),
     ]
 

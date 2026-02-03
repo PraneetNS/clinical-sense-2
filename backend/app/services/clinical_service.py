@@ -88,7 +88,18 @@ class ClinicalService:
     def create_medication(db: Session, patient_id: int, med_in: MedicationCreate, prescriber_id: int = None):
         ClinicalService._get_patient(db, patient_id)
         try:
-            db_obj = Medication(**med_in.model_dump(), patient_id=patient_id, prescribed_by_id=prescriber_id)
+            # Validate source_note_id if provided
+            med_data = med_in.model_dump()
+            if med_data.get('source_note_id'):
+                from ..models import ClinicalNote
+                note_exists = db.query(ClinicalNote).filter(
+                    ClinicalNote.id == med_data['source_note_id']
+                ).first()
+                if not note_exists:
+                    # Set to None if note doesn't exist to prevent FK violation
+                    med_data['source_note_id'] = None
+            
+            db_obj = Medication(**med_data, patient_id=patient_id, prescribed_by_id=prescriber_id)
             db.add(db_obj)
             db.flush()
             ClinicalService.log_audit(db, prescriber_id, "create", "Medication", db_obj.id)
@@ -108,7 +119,27 @@ class ClinicalService:
     def create_procedure(db: Session, patient_id: int, proc_in: ProcedureCreate, performer_id: int = None):
         ClinicalService._get_patient(db, patient_id)
         try:
-            db_obj = Procedure(**proc_in.model_dump(), patient_id=patient_id, performer_id=performer_id)
+            # Validate source_note_id and admission_id if provided
+            proc_data = proc_in.model_dump()
+            
+            if proc_data.get('source_note_id'):
+                from ..models import ClinicalNote
+                note_exists = db.query(ClinicalNote).filter(
+                    ClinicalNote.id == proc_data['source_note_id']
+                ).first()
+                if not note_exists:
+                    # Set to None if note doesn't exist to prevent FK violation
+                    proc_data['source_note_id'] = None
+            
+            if proc_data.get('admission_id'):
+                admission_exists = db.query(Admission).filter(
+                    Admission.id == proc_data['admission_id']
+                ).first()
+                if not admission_exists:
+                    # Set to None if admission doesn't exist to prevent FK violation
+                    proc_data['admission_id'] = None
+            
+            db_obj = Procedure(**proc_data, patient_id=patient_id, performer_id=performer_id)
             db.add(db_obj)
             db.flush()
             ClinicalService.log_audit(db, performer_id, "create", "Procedure", db_obj.id)
