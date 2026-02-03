@@ -13,20 +13,21 @@ export default function NoteHistoryPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        const fetchHistory = async () => {
+            try {
+                setLoading(true);
+                const response = await notesApi.getHistory(id as string);
+                setHistory(response.data);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         if (id) fetchHistory();
     }, [id]);
 
-    const fetchHistory = async () => {
-        try {
-            setLoading(true);
-            const response = await notesApi.getHistory(id as string);
-            setHistory(response.data);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     if (loading) {
         return (

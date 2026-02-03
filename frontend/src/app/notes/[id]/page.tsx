@@ -17,30 +17,31 @@ export default function NoteDetailPage() {
     const { showToast } = useToast();
 
     useEffect(() => {
+        const fetchNote = async () => {
+            try {
+                setLoading(true);
+                const response = await notesApi.getById(id as string);
+                const fetchedNote = response.data;
+
+                // Parse structured content string if it exists
+                if (fetchedNote.structured_content) {
+                    fetchedNote.structured_content = typeof fetchedNote.structured_content === 'string'
+                        ? JSON.parse(fetchedNote.structured_content)
+                        : fetchedNote.structured_content;
+                }
+
+                setNote(fetchedNote);
+            } catch (err) {
+                console.error(err);
+                setError("Failed to load the note details.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
         if (id) fetchNote();
     }, [id]);
 
-    const fetchNote = async () => {
-        try {
-            setLoading(true);
-            const response = await notesApi.getById(id as string);
-            const fetchedNote = response.data;
-
-            // Parse structured content string if it exists
-            if (fetchedNote.structured_content) {
-                fetchedNote.structured_content = typeof fetchedNote.structured_content === 'string'
-                    ? JSON.parse(fetchedNote.structured_content)
-                    : fetchedNote.structured_content;
-            }
-
-            setNote(fetchedNote);
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load the note details.");
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleDelete = async () => {
         if (!confirm("Are you sure you want to delete this note? This cannot be undone.")) return;

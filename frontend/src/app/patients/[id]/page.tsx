@@ -62,6 +62,7 @@ export default function PatientDetailPage() {
 
     useEffect(() => {
         if (id) fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
 
     const fetchData = async () => {
@@ -95,12 +96,14 @@ export default function PatientDetailPage() {
         }
     };
 
+
     // Sync with URL
     useEffect(() => {
         const tab = searchParams.get('tab');
         if (tab && tab !== activeTab) {
             setActiveTab(tab);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchParams]);
 
     const handleTabChange = (tab: string) => {
@@ -151,6 +154,7 @@ export default function PatientDetailPage() {
             }
         };
         fetchTabData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, id]);
 
     const openModal = (type: string, item: any = null) => {
