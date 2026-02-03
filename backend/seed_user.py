@@ -1,13 +1,12 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from app.core.config import settings
+from app.db.session import engine, SessionLocal
 from app.models import User, Base
 from app.core import security
-import os
 
-# Database Path
-DB_URL = "sqlite:///./clinical_doc.db"
-engine = create_engine(DB_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Ensure we are not using SQLite unless explicitly configured
+if settings.DATABASE_URL.startswith("sqlite"):
+    print("WARNING: Using SQLite in seed script. This project is intended for PostgreSQL.")
+
 
 def seed_user():
     Base.metadata.create_all(bind=engine)
