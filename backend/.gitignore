@@ -1,0 +1,34 @@
+# Node dependencies
+node_modules/
+.next/
+out/
+build/
+
+# Python dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.local
+.env.production
+
+# Databases
+*.db
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+frontend/lint.txt
+frontend/lint-output.txt
+
+# Temp / Uploads
+uploads/
+backend/uploads/
