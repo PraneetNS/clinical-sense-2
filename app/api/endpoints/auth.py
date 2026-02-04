@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+logger = logging.getLogger(__name__)
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -26,18 +28,45 @@ def register_user(user: auth_schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=auth_schemas.Token)
 def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if not user:
+    try:
+        logger.info(f"Login attempt for user: {form_data.username}")
+        user = db.query(models.User).filter(models.User.email == form_data.username).first()
+        if not user:
+            logger.warning(f"Login failed: User {form_data.username} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Verify password - susceptible to crashes if bcrypt/passlib version mismatch
+        try:
+            is_valid = security.verify_password(form_data.password, user.hashed_password)
+        except Exception as e:
+            logger.error(f"Password verification error for {form_data.username}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail="Authentication system error"
+            )
+
+        if not is_valid:
+            logger.warning(f"Login failed: Incorrect password for {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        logger.info(f"Login successful for user: {form_data.username}")
+    except HTTPException as he:
+        # Re-raise HTTP exceptions (404, 401)
+        raise he
+    except Exception as e:
+        logger.error(f"Unexpected error during login for {form_data.username}: {str(e)}")
+        # Return 500 instead of crashing (502)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not security.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal login error"
         )
     
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
