@@ -10,7 +10,7 @@
 - `OPENAI_API_KEY` or `GROQ_API_KEY`: (If using AI)
 
 ### Frontend (Vercel)
-- `NEXT_PUBLIC_API_URL`: `https://your-backend-app.onrender.com/api/v1`
+- `NEXT_PUBLIC_API_URL`: `https://clinical-sense.onrender.com/api/v1`
 
 ## 2. Render Services config
 - **Build Command**: `./render_build.sh` (or `pip install -r requirements.txt`)
