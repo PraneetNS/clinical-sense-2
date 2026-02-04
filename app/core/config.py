@@ -56,7 +56,10 @@ class Settings(BaseSettings):
         if not v:
             if os.getenv("ENV") == "production":
                 raise ValueError("DATABASE_URL must be set in production")
-            return "sqlite:///./clinical_doc.db"
+            # In non-production, we still require a DATABASE_URL for this strict mode
+            # unless we really want to allow local dev without it, but the prompt says 
+            # "Remove all local database usage".
+            raise ValueError("DATABASE_URL is required")
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v

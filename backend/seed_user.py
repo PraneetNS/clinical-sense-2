@@ -4,8 +4,10 @@ from app.models import User, Base
 from app.core import security
 import os
 
+from app.core.config import settings
+
 # Database Path
-DB_URL = "postgresql://clinical_sense_user:KpEPHbhShfvI0dfjGN7rCHHaInlu5ZPX@dpg-d5tks514tr6s73b93odg-a.oregon-postgres.render.com/clinical_sense"
+DB_URL = settings.DATABASE_URL
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -17,20 +19,22 @@ def seed_user():
     password = "password123"
     
     existing_user = db.query(User).filter(User.email == email).first()
-    if existing_user:
-        print(f"User {email} already exists.")
-        return
-
     hashed_pw = security.get_password_hash(password)
-    new_user = User(
-        email=email,
-        hashed_password=hashed_pw,
-        is_active=True
-    )
     
-    db.add(new_user)
-    db.commit()
-    print(f"Successfully created user: {email} with password: {password}")
+    if existing_user:
+        print(f"User {email} exists. Updating password to ensure bcrypt compatibility...")
+        existing_user.hashed_password = hashed_pw
+        db.commit()
+    else:
+        new_user = User(
+            email=email,
+            hashed_password=hashed_pw,
+            is_active=True
+        )
+        db.add(new_user)
+        db.commit()
+        print(f"Successfully created user: {email}")
+    
     db.close()
 
 if __name__ == "__main__":
