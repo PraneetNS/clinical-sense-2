@@ -19,22 +19,20 @@ def seed_user():
     password = "password123"
     
     existing_user = db.query(User).filter(User.email == email).first()
-    hashed_pw = security.get_password_hash(password)
-    
     if existing_user:
-        print(f"User {email} exists. Updating password to ensure bcrypt compatibility...")
-        existing_user.hashed_password = hashed_pw
-        db.commit()
-    else:
-        new_user = User(
-            email=email,
-            hashed_password=hashed_pw,
-            is_active=True
-        )
-        db.add(new_user)
-        db.commit()
-        print(f"Successfully created user: {email}")
+        print(f"User {email} already exists.")
+        return
+
+    hashed_pw = security.get_password_hash(password)
+    new_user = User(
+        email=email,
+        hashed_password=hashed_pw,
+        is_active=True
+    )
     
+    db.add(new_user)
+    db.commit()
+    print(f"Successfully created user: {email} with password: {password}")
     db.close()
 
 if __name__ == "__main__":

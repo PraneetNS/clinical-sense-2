@@ -5,9 +5,8 @@ sqlalchemy
 psycopg2-binary
 pydantic-settings
 python-jose[cryptography]
-
 python-multipart
-openai
+
 python-dotenv
 alembic
 slowapi

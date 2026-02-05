@@ -56,7 +56,10 @@ class Settings(BaseSettings):
         if not v:
             if os.getenv("ENV") == "production":
                 raise ValueError("DATABASE_URL must be set in production")
-            return "sqlite:///./clinical_doc.db"
+            # In non-production, we still require a DATABASE_URL for this strict mode
+            # unless we really want to allow local dev without it, but the prompt says 
+            # "Remove all local database usage".
+            raise ValueError("DATABASE_URL is required")
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v
@@ -78,14 +81,14 @@ settings = Settings()
 # Fail Fast: Strict Production Readiness Checks
 if settings.ENV == Environment.production:
     missing = []
-    if not settings.JWT_SECRET or settings.JWT_SECRET == "DEVELOPMENT_SECRET_REPLACE_IN_PROD":
+    if not settings.JWT_SECRET or settings.JWT_SECRET == "super-long-random-production-secret":
         missing.append("JWT_SECRET")
     if not settings.DATABASE_URL:
         missing.append("DATABASE_URL")
     if not settings.FRONTEND_URL:
         missing.append("FRONTEND_URL")
-    if not settings.OPENAI_API_KEY and not settings.GROQ_API_KEY:
-        missing.append("OPENAI_API_KEY or GROQ_API_KEY")
+    if not settings.GROQ_API_KEY:
+        missing.append("GROQ_API_KEY")
     
     if missing:
         raise RuntimeError(f"CRITICAL: Production deployment failed due to missing secrets: {', '.join(missing)}")

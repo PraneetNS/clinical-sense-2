@@ -98,7 +98,21 @@ export const clinicalApi = {
 };
 
 export const authApi = {
-    login: (data: FormData) => api.post('/auth/login', data),
+    login: (data: any) => {
+        const params = new URLSearchParams();
+        params.append('username', data.username);
+        params.append('password', data.password);
+        if (data.grant_type) {
+            params.append('grant_type', data.grant_type);
+        } else {
+            params.append('grant_type', 'password');
+        }
+        return api.post('/auth/login', params, {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+    },
     register: (data: any) => api.post('/auth/register', data),
     getMe: () => api.get('/auth/me'),
 };

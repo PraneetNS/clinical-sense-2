@@ -18,11 +18,11 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            const formData = new FormData();
-            formData.append('username', email);
-            formData.append('password', password);
-
-            const response = await authApi.login(formData);
+            const response = await authApi.login({
+                username: email,
+                password: password,
+                grant_type: 'password'
+            });
             const { access_token } = response.data;
 
             login(access_token);

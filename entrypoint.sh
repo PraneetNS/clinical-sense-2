@@ -7,6 +7,9 @@ python -m alembic upgrade head
 
 echo "Starting application with gunicorn + uvicorn workers..."
 # Port is provided by environment ($PORT)
+# Switch to backend directory where app module is located
+cd backend
+
 # Use 4 workers for production (adjust based on your server resources)
 gunicorn app.main:app \
   --workers 4 \

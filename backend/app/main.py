@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 import logging
 
 logger = logging.getLogger(__name__)
+import sys
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.exceptions import AppError, app_error_handler, general_exception_handler
@@ -26,9 +28,9 @@ import uuid
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Clinical Documentation Assistant - Secure AI restructuring for clinical notes.",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.ENV != Environment.production else None,
+    docs_url=f"{settings.API_V1_STR}/docs" if settings.ENV != Environment.production else None,
+    redoc_url=f"{settings.API_V1_STR}/redoc" if settings.ENV != Environment.production else None,
 )
 
 
@@ -97,31 +99,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
-def health_check():
+@app.get("/api/health")
+def health_check_general():
+    return {
+        "status": "healthy",
+        "environment": settings.ENV,
+        "version": "1.0.0"
+    }
+
+@app.get("/api/health/db")
+def health_check_db():
     try:
         # Check database connection
-        from sqlalchemy import text
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         db.close()
-        return {
-            "status": "healthy",
-            "environment": settings.ENV,
-            "version": "1.0.0"
-        }
+        return {"db": "connected"}
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "detail": "Database connection failed"}
+            content={"db": "disconnected", "error": str(e)}
         )
+
+# Legacy health check redirection or removal (optional, but keeping for compatibility if needed, 
+# though prompt asked for /api/health)
+@app.get("/health")
+def health_check_legacy():
+    return health_check_general()
 
 @app.on_event("startup")
 async def startup_event():
     logger.info(f"Starting {settings.PROJECT_NAME} in {settings.ENV} mode")
+    
+    # Database Connection Check
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        logger.info("✅ Database connection established successfully.")
+    except Exception as e:
+        logger.critical(f"❌ Database connection failed: {str(e)}")
+        logger.critical("Stopping server due to database connection failure.")
+        sys.exit(1)
+
     if settings.ENV == Environment.production:
         logger.info(f"CORS Origins: {settings.BACKEND_CORS_ORIGINS}")
+        # Validate CORS
+        if "https://clinical-sense.vercel.app" not in settings.BACKEND_CORS_ORIGINS:
+             logger.warning("Production CORS origin missing: https://clinical-sense.vercel.app")
 
 @app.get("/")
 def read_root():
