@@ -1,22 +1,8 @@
-from datetime import datetime, timedelta
-from typing import Any, Union
-from jose import jwt
-from passlib.context import CryptContext
-from .config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
-
-def create_access_token(subject: Union[str, Any], expires_delta: timedelta = None) -> str:
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode = {"exp": expire, "sub": str(subject)}
-    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+# Custom JWT and Password Auth removed in favor of Firebase Authentication
+# This file is kept as a placeholder to avoid breaking imports, but logic is deprecated.
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    raise NotImplementedError("Use Firebase Auth on the frontend")
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    raise NotImplementedError("Use Firebase Auth on the frontend")

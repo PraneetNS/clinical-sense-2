@@ -1,0 +1,59 @@
+========================================================================
+             CLINICAL DOCUMENTATION ASSISTANT - DEPLOYMENT GUIDE
+========================================================================
+
+This project is architected for modern cloud deployment. 
+Below are the recommended platforms and steps for each component.
+
+--- 1. DATABASE (PostgreSQL) ---
+Recommended Platform: Supabase (https://supabase.com)
+- Provision a New Project.
+- Copy the "Connection String" (Transaction Pooler or Direct).
+- Ensure it is a PostgreSQL 15+ database.
+- Used in Backend: DATABASE_URL
+
+--- 2. AUTHENTICATION & IDENTITY ---
+Recommended Platform: Firebase (https://console.firebase.google.com)
+- Enable "Email/Password" and "Google" providers.
+- Create a "Service Account" to get the JSON key for the Backend.
+- Copy Client Config (apiKey, authDomain, etc.) for the Frontend.
+- Used in Backend: FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL
+- Used in Frontend: NEXT_PUBLIC_FIREBASE_API_KEY, etc.
+
+--- 3. BACKEND API (FastAPI) ---
+Recommended Platform: Render (https://render.com) or Railway (https://railway.app)
+- Repository: Connect your GitHub repo.
+- Root Directory: backend
+- Build Command: pip install -r requirements.txt
+- Start Command: gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT
+- Env Vars: See backend/.env.example
+- NOTE: Uploaded documents are stored in the 'uploads/' folder. On services like 
+  Render/Railway, this storage is EPHEMERAL. For permanent storage, you should 
+  mount a Persistent Volume or integrate AWS S3 / Supabase Storage.
+
+--- 4. FRONTEND (Next.js) ---
+Recommended Platform: Vercel (https://vercel.com)
+- Repository: Connect your GitHub repo.
+- Root Directory: frontend
+- Build Command: npm run build
+- Output Directory: .next
+- Env Vars: See frontend/.env.example (Must start with NEXT_PUBLIC_)
+
+--- 5. AI CLINICAL INTELLIGENCE ---
+Provider: Groq (https://groq.com)
+- Obtain API Key from Groq Cloud Console.
+- Ensure 'llama-3.3-70b-versatile' model is available for your tier.
+- Used in Backend: GROQ_API_KEY
+
+--- 6. DEPLOYMENT CHECKLIST & ORDER ---
+1. Deploy Database (Supabase).
+2. Run Migrations: alembic upgrade head (Run this from a local machine pointing 
+   to the remote DB, or via a CI/CD pipeline).
+3. Deploy Backend (Render/Railway).
+4. Copy the Backend URL (e.g., https://api.yourdomain.com).
+5. Deploy Frontend (Vercel) with the Backend URL as NEXT_PUBLIC_API_URL.
+6. Add the Frontend URL to the Backend's BACKEND_CORS_ORIGINS env var.
+
+========================================================================
+Documentation Generated on: 2026-02-09
+========================================================================

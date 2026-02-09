@@ -4,14 +4,14 @@ gunicorn
 sqlalchemy
 psycopg2-binary
 pydantic-settings
-python-jose[cryptography]
 python-multipart
+
+# Auth
+firebase-admin
 
 python-dotenv
 alembic
 slowapi
-bcrypt==4.0.1
-passlib[bcrypt]==1.7.4
 groq
 pydantic
 reportlab

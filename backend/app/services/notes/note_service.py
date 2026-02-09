@@ -1,10 +1,10 @@
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...db import session as db_session
 from ...models import ClinicalNote, AuditLog, User, NoteVersion
 from ...schemas.notes import NoteCreateRequest, NoteUpdateRequest
 from ...services.ai.ai_service import AIService
 from ...services.embedding_service import embedding_service
-from ...services.safety_service import safety_service
 import json
 import numpy as np
 
@@ -24,13 +24,16 @@ class NoteService:
             if existing_note:
                 return existing_note
 
-        # 1. Safety Check
-        is_safe, violations = safety_service.validate_content(note_in.raw_content)
-        if not is_safe:
-             raise ValueError(f"Safety Violation: {'; '.join(violations)}")
+        # 1. Patient Ownership Check
+        if note_in.patient_id:
+             from ..patient_service import PatientService
+             # This will raise 404/AccessDenied if not owned
+             PatientService.get_patient(db, note_in.patient_id, user_id)
+
+
         
         try:
-            # 2. Generate structure using AI
+            # 3. Generate structure using AI
             structured_data = await ai_service.structure_clinical_note(note_in.raw_content, note_in.note_type)
             
             # 3. Generate embedding (CPU bound)
@@ -193,9 +196,14 @@ class NoteService:
         return [r[0] for r in results[:limit]]
 
     @staticmethod
-    def get_patient_timeline(db: Session, patient_id: int, skip: int = 0, limit: int = 100):
+    def get_patient_timeline(db: Session, patient_id: int, user_id: int, skip: int = 0, limit: int = 100):
+        # Verify access to patient first
+        from ..patient_service import PatientService
+        PatientService.get_patient(db, patient_id, user_id)
+        
         return db.query(ClinicalNote).filter(
             ClinicalNote.patient_id == patient_id,
+            ClinicalNote.user_id == user_id,
             ClinicalNote.is_deleted == False
         ).order_by(ClinicalNote.created_at.desc()).offset(skip).limit(limit).all()
     

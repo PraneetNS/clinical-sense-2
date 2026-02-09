@@ -21,6 +21,20 @@ from slowapi import _rate_limit_exceeded_handler
 from starlette.middleware.base import BaseHTTPMiddleware
 from .core.logging import logger, request_id_contextvar
 import uuid
+import firebase_admin
+from firebase_admin import credentials
+
+# Initialize Firebase
+if not firebase_admin._apps:
+    cert_dict = {
+        "type": "service_account",
+        "project_id": settings.FIREBASE_PROJECT_ID,
+        "client_email": settings.FIREBASE_CLIENT_EMAIL,
+        "private_key": settings.FIREBASE_PRIVATE_KEY,
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    cred = credentials.Certificate(cert_dict)
+    firebase_admin.initialize_app(cred)
 
 # Tables are managed by Alembic migrations
 # Base.metadata.create_all(bind=engine)
@@ -34,11 +48,11 @@ app = FastAPI(
 )
 
 
-from fastapi.staticfiles import StaticFiles
-import os
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Static files should NOT be public for clinical data.
+# Files will be served through authenticated endpoints.
+# if not os.path.exists("uploads"):
+#     os.makedirs("uploads")
+# app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Rate Limiting Setup
 app.state.limiter = limiter

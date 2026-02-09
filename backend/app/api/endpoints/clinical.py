@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, File, UploadFile, Form
+from fastapi.responses import FileResponse
 import shutil
 import os
 import uuid
@@ -30,7 +31,7 @@ def get_admissions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_admissions(db, patient_id)
+    return ClinicalService.get_admissions(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/admissions", response_model=AdmissionResponse)
 def create_admission(
@@ -64,7 +65,7 @@ def get_medical_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_history(db, patient_id)
+    return ClinicalService.get_history(db, patient_id, user_id=current_user.id)
 
 # --- History ---
 @router.post("/{patient_id}/history", response_model=MedicalHistoryResponse)
@@ -127,7 +128,7 @@ def get_medications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_medications(db, patient_id)
+    return ClinicalService.get_medications(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/medications", response_model=MedicationResponse)
 def create_medication(
@@ -162,7 +163,7 @@ def get_procedures(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_procedures(db, patient_id)
+    return ClinicalService.get_procedures(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/procedures", response_model=ProcedureResponse)
 def create_procedure(
@@ -197,7 +198,7 @@ def get_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_documents(db, patient_id)
+    return ClinicalService.get_documents(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/documents/upload", response_model=DocumentResponse)
 async def upload_document(
@@ -238,8 +239,8 @@ async def upload_document(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # Return relative URL
-    file_url = f"/uploads/{filename}"
+    # Return relative API URL (secure)
+    file_url = f"/api/v1/patients/{patient_id}/documents/file/{filename}"
     
     doc_in = DocumentCreate(
         title=title,
@@ -249,6 +250,30 @@ async def upload_document(
     )
     
     return ClinicalService.create_document(db, patient_id, doc_in, uploader_id=current_user.id)
+    
+@router.get("/{patient_id}/documents/file/{filename}")
+async def get_document_file(
+    patient_id: int,
+    filename: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Security: Verify ownership/access
+    ClinicalService._get_patient(db, patient_id, current_user.id)
+    
+    # Preventing path traversal
+    UPLOAD_DIR = "uploads"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    # Resolve to absolute path and verify it's within the upload dir
+    abs_file_path = os.path.abspath(file_path)
+    if not abs_file_path.startswith(os.path.abspath(UPLOAD_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid path")
+        
+    if not os.path.exists(abs_file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(abs_file_path)
 
 @router.post("/{patient_id}/documents", response_model=DocumentResponse)
 def create_document(
@@ -283,7 +308,7 @@ def get_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_tasks(db, patient_id)
+    return ClinicalService.get_tasks(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/tasks", response_model=TaskResponse)
 def create_task(
@@ -318,7 +343,7 @@ def get_billing_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.get_billing_items(db, patient_id)
+    return ClinicalService.get_billing_items(db, patient_id, user_id=current_user.id)
 
 @router.post("/{patient_id}/billing", response_model=BillingItemResponse)
 def create_billing_item(

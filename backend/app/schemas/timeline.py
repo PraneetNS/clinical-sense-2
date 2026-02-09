@@ -12,5 +12,5 @@ class TimelineEvent(BaseModel):
     status: Optional[str] = None
     metadata: Optional[Any] = None
 
-    class Config:
-        from_attributes = True
+
+    model_config = {"from_attributes": True}

@@ -64,8 +64,8 @@ class PatientResponse(PatientBase):
     total_billing_amount: float = 0.0
     outstanding_billing_amount: float = 0.0
 
-    class Config:
-        from_attributes = True
+
+    model_config = {"from_attributes": True}
 
 class PatientReport(BaseModel):
     patient: PatientResponse

@@ -5,26 +5,31 @@ import Link from 'next/link';
 import { patientsApi } from '@/lib/api';
 import { Plus, Search, User, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
 export default function PatientsPage() {
     const [patients, setPatients] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const { isLoading, fbUser } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        fetchPatients();
-    }, []);
+        if (!isLoading && fbUser) {
+            fetchPatients();
+        }
+    }, [isLoading, fbUser]);
 
     const fetchPatients = async (query = '') => {
         try {
             setLoading(true);
             const response = await patientsApi.getAll(query);
             setPatients(response.data);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            setError("Failed to load patients.");
+            const detail = err.response?.data?.detail || err.message || "Unknown connectivity error";
+            setError(`Failed to load patients: ${detail}`);
         } finally {
             setLoading(false);
         }

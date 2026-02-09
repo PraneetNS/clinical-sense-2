@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { notesApi } from '@/lib/api';
 import { FileText, Plus, Clock, ChevronRight, Search, LogOut, Trash2, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 export default function DashboardPage() {
@@ -12,20 +13,24 @@ export default function DashboardPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchMode, setSearchMode] = useState('keyword');
     const [error, setError] = useState<string | null>(null);
-    const { logout } = useAuth();
+    const { logout, isLoading, fbUser } = useAuth();
+    const router = useRouter();
 
     useEffect(() => {
-        fetchNotes();
-    }, []);
+        if (!isLoading && fbUser) {
+            fetchNotes();
+        }
+    }, [isLoading, fbUser]);
 
     const fetchNotes = async (query = '', mode = 'keyword') => {
         try {
             setLoading(true);
             const response = await notesApi.getAll(query, mode);
             setNotes(response.data);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            setError("Failed to load clinical notes.");
+            const detail = err.response?.data?.detail || err.message || "Unknown connectivity error";
+            setError(`Failed to load clinical notes: ${detail}`);
         } finally {
             setLoading(false);
         }

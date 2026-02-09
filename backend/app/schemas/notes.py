@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -23,7 +23,8 @@ class NoteCreateRequest(BaseModel):
     patient_id: Optional[int] = None
     idempotency_key: Optional[str] = Field(None, description="Unique key to prevent duplicate note creation.")
 
-    @validator('raw_content')
+    @field_validator('raw_content')
+    @classmethod
     def content_not_empty(cls, v):
         if not v.strip():
             raise ValueError('Clinical notes cannot be empty or only whitespace.')
@@ -40,8 +41,8 @@ class NoteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+
+    model_config = {"from_attributes": True}
 
 class NoteUpdateRequest(BaseModel):
     title: Optional[str] = None

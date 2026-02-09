@@ -32,7 +32,7 @@ def read_patients(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return PatientService.get_patients(db, skip=skip, limit=limit)
+    return PatientService.get_patients(db, user_id=current_user.id, skip=skip, limit=limit)
 
 @router.get("/{patient_id}", response_model=PatientResponse)
 def read_patient(
@@ -40,7 +40,7 @@ def read_patient(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    patient = PatientService.get_patient(db, patient_id)
+    patient = PatientService.get_patient(db, patient_id, user_id=current_user.id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
@@ -63,7 +63,7 @@ def get_patient_timeline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return PatientService.get_unified_timeline(db, patient_id)
+    return PatientService.get_unified_timeline(db, patient_id, user_id=current_user.id)
 
 @router.get("/{patient_id}/notes", response_model=List[NoteResponse])
 def get_patient_notes(
@@ -80,7 +80,7 @@ async def get_patient_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return await PatientService.get_patient_report(db, patient_id)
+    return await PatientService.get_patient_report(db, patient_id, user_id=current_user.id)
 
 @router.get("/{patient_id}/report/pdf")
 async def get_patient_report_pdf(
@@ -88,7 +88,7 @@ async def get_patient_report_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    report_data = await PatientService.get_patient_report(db, patient_id)
+    report_data = await PatientService.get_patient_report(db, patient_id, user_id=current_user.id)
     pdf_buffer = generate_patient_pdf(report_data)
     
     return StreamingResponse(

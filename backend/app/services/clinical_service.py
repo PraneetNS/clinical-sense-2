@@ -21,16 +21,16 @@ class ClinicalService:
         db.add(audit)
 
     @staticmethod
-    def _get_patient(db: Session, patient_id: int):
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    def _get_patient(db: Session, patient_id: int, user_id: int):
+        patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == user_id).first()
         if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
+            raise HTTPException(status_code=404, detail="Patient not found or access denied")
         return patient
 
     # --- Admissions ---
     @staticmethod
-    def create_admission(db: Session, patient_id: int, admission_in: AdmissionCreate, user_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_admission(db: Session, patient_id: int, admission_in: AdmissionCreate, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         try:
             db_obj = Admission(**admission_in.model_dump(), patient_id=patient_id)
             db.add(db_obj)
@@ -44,17 +44,19 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_admissions(db: Session, patient_id: int):
+    def get_admissions(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(Admission).filter(Admission.patient_id == patient_id).all()
 
     @staticmethod
-    def get_history(db: Session, patient_id: int):
+    def get_history(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(MedicalHistory).filter(MedicalHistory.patient_id == patient_id).all()
 
     # --- History ---
     @staticmethod
-    def create_medical_history(db: Session, patient_id: int, history_in: MedicalHistoryCreate, user_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_medical_history(db: Session, patient_id: int, history_in: MedicalHistoryCreate, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         try:
             db_obj = MedicalHistory(**history_in.model_dump(), patient_id=patient_id)
             db.add(db_obj)
@@ -69,8 +71,8 @@ class ClinicalService:
 
     # --- Allergies ---
     @staticmethod
-    def create_allergy(db: Session, patient_id: int, allergy_in: AllergyCreate, user_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_allergy(db: Session, patient_id: int, allergy_in: AllergyCreate, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         try:
             db_obj = Allergy(**allergy_in.model_dump(), patient_id=patient_id)
             db.add(db_obj)
@@ -85,8 +87,8 @@ class ClinicalService:
 
     # --- Medications ---
     @staticmethod
-    def create_medication(db: Session, patient_id: int, med_in: MedicationCreate, prescriber_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_medication(db: Session, patient_id: int, med_in: MedicationCreate, prescriber_id: int):
+        ClinicalService._get_patient(db, patient_id, prescriber_id)
         try:
             db_obj = Medication(**med_in.model_dump(), patient_id=patient_id, prescribed_by_id=prescriber_id)
             db.add(db_obj)
@@ -100,13 +102,14 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_medications(db: Session, patient_id: int):
+    def get_medications(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(Medication).filter(Medication.patient_id == patient_id).all()
 
     # --- Procedures ---
     @staticmethod
-    def create_procedure(db: Session, patient_id: int, proc_in: ProcedureCreate, performer_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_procedure(db: Session, patient_id: int, proc_in: ProcedureCreate, performer_id: int):
+        ClinicalService._get_patient(db, patient_id, performer_id)
         try:
             db_obj = Procedure(**proc_in.model_dump(), patient_id=patient_id, performer_id=performer_id)
             db.add(db_obj)
@@ -120,13 +123,14 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_procedures(db: Session, patient_id: int):
+    def get_procedures(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(Procedure).filter(Procedure.patient_id == patient_id).all()
 
     # --- Documents ---
     @staticmethod
-    def create_document(db: Session, patient_id: int, doc_in: DocumentCreate, uploader_id: int = None):
-        ClinicalService._get_patient(db, patient_id)
+    def create_document(db: Session, patient_id: int, doc_in: DocumentCreate, uploader_id: int):
+        ClinicalService._get_patient(db, patient_id, uploader_id)
         try:
             db_obj = Document(**doc_in.model_dump(), patient_id=patient_id, uploader_id=uploader_id)
             db.add(db_obj)
@@ -140,14 +144,15 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     @staticmethod
-    def get_documents(db: Session, patient_id: int):
+    def get_documents(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(Document).filter(Document.patient_id == patient_id, Document.is_deleted == False).all()
 
     # --- Tasks ---
     @staticmethod
-    def create_task(db: Session, task_in: TaskCreate, patient_id: int = None, user_id: int = None):
+    def create_task(db: Session, task_in: TaskCreate, user_id: int, patient_id: int = None):
         if patient_id:
-            ClinicalService._get_patient(db, patient_id)
+            ClinicalService._get_patient(db, patient_id, user_id)
         try:
             db_obj = Task(**task_in.model_dump(), patient_id=patient_id)
             db.add(db_obj)
@@ -161,7 +166,8 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_tasks(db: Session, patient_id: int):
+    def get_tasks(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(Task).filter(Task.patient_id == patient_id).all()
         
     @staticmethod
@@ -181,8 +187,8 @@ class ClinicalService:
 
     # --- Billing ---
     @staticmethod
-    def create_billing_item(db: Session, patient_id: int, item_in: BillingItemCreate, user_id: int = None):
-         ClinicalService._get_patient(db, patient_id)
+    def create_billing_item(db: Session, patient_id: int, item_in: BillingItemCreate, user_id: int):
+         ClinicalService._get_patient(db, patient_id, user_id)
          try:
             db_obj = BillingItem(**item_in.model_dump(), patient_id=patient_id)
             db.add(db_obj)
@@ -196,15 +202,26 @@ class ClinicalService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_billing_items(db: Session, patient_id: int):
+    def get_billing_items(db: Session, patient_id: int, user_id: int):
+        ClinicalService._get_patient(db, patient_id, user_id)
         return db.query(BillingItem).filter(BillingItem.patient_id == patient_id).all()
 
     # --- Update/Delete Helpers ---
     @staticmethod
-    def update_entity(db: Session, model, entity_id: int, update_data: dict, user_id: int = None):
-        db_obj = db.query(model).filter(model.id == entity_id).first()
+    def _get_entity_with_ownership_check(db: Session, model, entity_id: int, user_id: int):
+        # All clinical models in this service have a .patient relationship and patient_id
+        db_obj = db.query(model).join(Patient).filter(
+            model.id == entity_id,
+            Patient.user_id == user_id
+        ).first()
+        
         if not db_obj:
-            raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
+            raise HTTPException(status_code=404, detail=f"{model.__name__} not found or access denied")
+        return db_obj
+
+    @staticmethod
+    def update_entity(db: Session, model, entity_id: int, update_data: dict, user_id: int):
+        db_obj = ClinicalService._get_entity_with_ownership_check(db, model, entity_id, user_id)
         
         try:
             for field, value in update_data.items():
@@ -215,15 +232,15 @@ class ClinicalService:
             db.commit()
             db.refresh(db_obj)
             return db_obj
+        except HTTPException:
+            raise
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def delete_entity(db: Session, model, entity_id: int, user_id: int = None):
-        db_obj = db.query(model).filter(model.id == entity_id).first()
-        if not db_obj:
-            raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
+    def delete_entity(db: Session, model, entity_id: int, user_id: int):
+        db_obj = ClinicalService._get_entity_with_ownership_check(db, model, entity_id, user_id)
         
         try:
             if hasattr(db_obj, "is_deleted"):

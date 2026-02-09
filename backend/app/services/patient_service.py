@@ -21,7 +21,7 @@ class PatientService:
     @staticmethod
     def create_patient(db: Session, patient_in: PatientCreate, creator_id: int = None):
         try:
-            db_patient = Patient(**patient_in.model_dump())
+            db_patient = Patient(**patient_in.model_dump(), user_id=creator_id)
             db.add(db_patient)
             db.flush()
             PatientService.log_audit(db, creator_id, "create", "Patient", db_patient.id)
@@ -33,14 +33,21 @@ class PatientService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_patients(db: Session, skip: int = 0, limit: int = 100):
-        return db.query(Patient).offset(skip).limit(limit).all()
+    def get_patients(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+        return db.query(Patient).filter(
+            Patient.user_id == user_id,
+            Patient.is_deleted == False
+        ).offset(skip).limit(limit).all()
 
     @staticmethod
-    def get_patient(db: Session, patient_id: int):
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    def get_patient(db: Session, patient_id: int, user_id: int = None):
+        query = db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False)
+        if user_id:
+            query = query.filter(Patient.user_id == user_id)
+        
+        patient = query.first()
         if not patient:
-             raise HTTPException(status_code=404, detail="Patient not found")
+             raise HTTPException(status_code=404, detail="Patient not found or access denied")
         
         # Calculate billing totals
         total = 0.0
@@ -56,13 +63,13 @@ class PatientService:
         return patient
 
     @staticmethod
-    async def get_patient_report(db: Session, patient_id: int):
-        patient = PatientService.get_patient(db, patient_id)
+    async def get_patient_report(db: Session, patient_id: int, user_id: int):
+        patient = PatientService.get_patient(db, patient_id, user_id)
         from ..models import ClinicalNote, Task, Document
         notes = db.query(ClinicalNote).filter(ClinicalNote.patient_id == patient_id, ClinicalNote.is_deleted == False).order_by(ClinicalNote.created_at.desc()).all()
         tasks = db.query(Task).filter(Task.patient_id == patient_id).all()
         docs = db.query(Document).filter(Document.patient_id == patient_id, Document.is_deleted == False).all()
-        timeline = PatientService.get_unified_timeline(db, patient_id)
+        timeline = PatientService.get_unified_timeline(db, patient_id, user_id=user_id)
         
         # Prepare text for AI summary
         history_text = f"Patient: {patient.name}. \nNotes: "
@@ -84,8 +91,12 @@ class PatientService:
         }
 
     @staticmethod
-    def update_patient(db: Session, patient_id: int, patient_in: PatientUpdate, user_id: int = None):
-        db_patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    def update_patient(db: Session, patient_id: int, patient_in: PatientUpdate, user_id: int):
+        db_patient = db.query(Patient).filter(
+            Patient.id == patient_id, 
+            Patient.user_id == user_id,
+            Patient.is_deleted == False
+        ).first()
         if not db_patient:
             raise HTTPException(status_code=404, detail="Patient not found")
         
@@ -102,7 +113,10 @@ class PatientService:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     @staticmethod
-    def get_unified_timeline(db: Session, patient_id: int):
+    def get_unified_timeline(db: Session, patient_id: int, user_id: int):
+        # 0. Check access
+        PatientService.get_patient(db, patient_id, user_id)
+        
         from ..models import ClinicalNote, Admission, Medication, Procedure, Document, Task, MedicalHistory
         
         # 1. Fetch all relevant records

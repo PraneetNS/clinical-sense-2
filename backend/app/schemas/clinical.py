@@ -19,8 +19,7 @@ class AdmissionResponse(AdmissionBase):
     patient_id: int
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Medical History ---
 class MedicalHistoryBase(BaseModel):
@@ -37,8 +36,7 @@ class MedicalHistoryResponse(MedicalHistoryBase):
     patient_id: int
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Allergy ---
 class AllergyBase(BaseModel):
@@ -59,8 +57,7 @@ class AllergyResponse(AllergyBase):
     patient_id: int
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Medication ---
 class MedicationBase(BaseModel):
@@ -81,8 +78,7 @@ class MedicationResponse(MedicationBase):
     prescribed_by_id: Optional[int]
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Procedure ---
 class ProcedureBase(BaseModel):
@@ -102,8 +98,7 @@ class ProcedureResponse(ProcedureBase):
     performer_id: Optional[int]
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Document ---
 class DocumentBase(BaseModel):
@@ -121,8 +116,7 @@ class DocumentResponse(DocumentBase):
     uploader_id: Optional[int]
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Task ---
 class TaskBase(BaseModel):
@@ -139,8 +133,7 @@ class TaskResponse(TaskBase):
     assigned_to_id: Optional[int]
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Billing Item ---
 class BillingItemBase(BaseModel):
@@ -157,8 +150,7 @@ class BillingItemResponse(BillingItemBase):
     patient_id: int
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Update Schemas ---
 class MedicationUpdate(BaseModel):

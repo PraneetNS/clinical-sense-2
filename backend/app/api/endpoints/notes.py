@@ -44,6 +44,8 @@ def get_notes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from ...core.logging import logger
+    logger.info(f"Fetching notes for user {current_user.id} (search: {search}, mode: {mode})")
     if search and mode == "semantic":
         notes = NoteService.semantic_search(db, current_user.id, search)
     else:

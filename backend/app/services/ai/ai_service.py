@@ -3,23 +3,28 @@ import json
 import time
 import asyncio
 from typing import Dict, Any, Optional
+from fastapi import HTTPException
 from ...core.config import settings
 from ...core.logging import logger, request_id_contextvar
 from .prompts import PROMPTS
 
 class AIService:
     def __init__(self):
-        self.client = None
-        if settings.GROQ_API_KEY:
+        if not settings.GROQ_API_KEY:
+            logger.critical("GROQ_API_KEY is missing. AI structured note generation will fail.")
+            self.client = None
+        else:
             self.client = groq.Groq(api_key=settings.GROQ_API_KEY)
             
     async def structure_clinical_note(self, text: str, note_type: str = "SOAP") -> dict:
         """
-        Structures raw clinical text into JSON based on the note type.
-        Includes retry logic, timeout handling, and strict error boundaries.
+        Structures raw clinical text into JSON using Groq.
         """
         if not self.client:
-            return self._get_demo_response(note_type)
+            raise HTTPException(
+                status_code=503, 
+                detail="clinical intelligence service (Groq) is not configured on the backend."
+            )
 
         system_prompt = PROMPTS.get(note_type, PROMPTS["SOAP"])
         retries = 3
@@ -45,33 +50,30 @@ class AIService:
                 # Validation: Ensure keys exist based on note_type
                 validated_data = self._validate_and_fix_response(data, note_type)
                 
-                logger.info(f"AI call successful", extra={"metadata": {
+                logger.info(f"Groq structure call successful", extra={"metadata": {
                     "request_id": request_id_contextvar.get() or "N/A",
                     "latency": round(latency, 3),
-                    "model": settings.GROQ_MODEL,
-                    "attempt": attempt + 1
+                    "model": settings.GROQ_MODEL
                 }})
                 
                 return validated_data
                 
             except (json.JSONDecodeError, groq.APIError, groq.RateLimitError) as e:
-                logger.warning(f"AI Call failed (Attempt {attempt+1}): {str(e)}")
+                logger.warning(f"Groq call failed (Attempt {attempt+1}): {str(e)}")
                 if attempt == retries - 1:
-                     return self._get_error_response(note_type, "Service unavailable after retries.")
+                     raise HTTPException(status_code=503, detail="AI provider is currently overwhelmed.")
                 await asyncio.sleep(1.0 * (attempt + 1)) # Simple exponential backoff
                 
             except Exception as e:
                 logger.error(f"Critical AI Error: {str(e)}")
-                return self._get_error_response(note_type, "Internal processing error.")
-
-        return self._get_error_response(note_type, "Unknown error.")
+                raise HTTPException(status_code=500, detail="Error structuring clinical note.")
 
     async def summarize_patient_initially(self, history_text: str) -> str:
         """
         Summarizes patient history for the final report.
         """
         if not self.client:
-            return "Clinical summary not available (Demo Mode)."
+            return "Clinical summary unavailable (AI not configured)."
             
         system_prompt = "You are a senior clinical documentation assistant. Summarize the patient clinical history into a professional, concise summary. Stick to facts entered. No advice."
         

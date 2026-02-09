@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, MetaData
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, MetaData, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
@@ -18,7 +18,7 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    firebase_uid = Column(String, unique=True, index=True, nullable=True)
     full_name = Column(String, nullable=True)
     role = Column(String, default="doctor") # 'doctor', 'assistant', 'admin'
     
@@ -27,6 +27,7 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     
     # Relationships
+    patients = relationship("Patient", back_populates="creator")
     notes = relationship("ClinicalNote", back_populates="owner")
     tasks_assigned = relationship("Task", back_populates="assignee")
     procedures_performed = relationship("Procedure", back_populates="performer")
@@ -37,7 +38,8 @@ class Patient(Base):
     __tablename__ = "patients"
     
     id = Column(Integer, primary_key=True, index=True)
-    mrn = Column(String, unique=True, index=True) # Medical Record Number
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    mrn = Column(String, index=True) # Medical Record Number
     name = Column(String, index=True) # Encrypted in production
     date_of_birth = Column(DateTime)
     gender = Column(String, nullable=True)
@@ -55,12 +57,16 @@ class Patient(Base):
     
     # System fields
     status = Column(String, default="Active", index=True) # 'Active', 'Closed'
+    
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     
+    __table_args__ = (UniqueConstraint('user_id', 'mrn', name='uq_patient_user_mrn'),)
+    
     # Relationships
+    creator = relationship("User", back_populates="patients")
     notes = relationship("ClinicalNote", back_populates="patient")
     admissions = relationship("Admission", back_populates="patient")
     medical_history = relationship("MedicalHistory", back_populates="patient")

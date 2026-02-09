@@ -69,15 +69,14 @@ export default function PatientDetailPage() {
         try {
             setLoading(true);
             setError(null);
-            const [pRes, nRes, hRes, tRes] = await Promise.all([
+            const [pRes, hRes, tRes] = await Promise.all([
                 patientsApi.getById(id as string),
-                patientsApi.getTimeline(id as string),
                 clinicalApi.getHistory(id as string),
-                patientsApi.getTimeline(id as string) // Re-fetch unified timeline
+                patientsApi.getTimeline(id as string)
             ]);
             setTimeline(tRes.data);
             setPatient(pRes.data);
-            setNotes(nRes.data);
+            setNotes(tRes.data.filter((e: any) => e.type === 'note')); // Extract notes from timeline
             setMedicalHistory(hRes.data);
 
             // Sync clinical data states from patient response
@@ -1195,12 +1194,7 @@ export default function PatientDetailPage() {
                                     <p className="text-xs text-slate-500 uppercase font-bold tracking-[0.2em] mt-2">Aggregated Clinical Documentation Report</p>
                                 </div>
                                 <div className="flex gap-4">
-                                    <button
-                                        onClick={() => handleTabChange('report')}
-                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-all"
-                                    >
-                                        <RefreshCw size={18} /> Refresh
-                                    </button>
+
                                     <button
                                         onClick={handleDownloadReport}
                                         className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white font-black rounded-xl hover:bg-teal-700 shadow-xl shadow-teal-600/20 transition-all hover:-translate-y-0.5"
