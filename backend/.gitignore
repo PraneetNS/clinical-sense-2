@@ -15,7 +15,8 @@ env/
 .env
 .env.local
 .env.production
-
+service_account.json
+.*json
 # Databases
 *.db
 *.sqlite3
