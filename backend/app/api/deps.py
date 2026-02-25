@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from ..core.config import settings
@@ -7,13 +7,11 @@ from .. import models
 from ..core.logging import user_id_contextvar
 import firebase_admin
 from firebase_admin import auth
+from typing import Optional
 
 security = HTTPBearer()
 
-def get_current_user(
-    db: Session = Depends(get_db), 
-    token: HTTPAuthorizationCredentials = Depends(security)
-) -> models.User:
+def verify_token_and_get_user(db: Session, token_str: str) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -22,7 +20,7 @@ def get_current_user(
     
     try:
         # Verify Firebase ID Token
-        decoded_token = auth.verify_id_token(token.credentials)
+        decoded_token = auth.verify_id_token(token_str)
         email = decoded_token.get("email")
         firebase_uid = decoded_token.get("uid")
         
@@ -30,7 +28,8 @@ def get_current_user(
             raise credentials_exception
             
     except Exception as e:
-        print(f"Auth Error: {e}")
+        from ..core.logging import logger
+        logger.error(f"Auth Error: {e}")
         raise credentials_exception
         
     # Get or Create User
@@ -59,6 +58,19 @@ def get_current_user(
         
     user_id_contextvar.set(user.id)
     return user
+
+def get_current_user(
+    db: Session = Depends(get_db), 
+    token: HTTPAuthorizationCredentials = Depends(security)
+) -> models.User:
+    return verify_token_and_get_user(db, token.credentials)
+
+def get_current_user_from_token(
+    db: Session = Depends(get_db),
+    token: str = Query(...)
+) -> models.User:
+    """Special dependency for browser-opened files that can't send headers easily."""
+    return verify_token_and_get_user(db, token)
 
 def check_role(roles: list[str]):
     def role_checker(current_user: models.User = Depends(get_current_user)):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 import json
@@ -19,7 +19,9 @@ router = APIRouter()
 @limiter.limit("5/minute")
 async def structure_note(
     request: Request,
+
     note_in: NoteCreateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -29,10 +31,21 @@ async def structure_note(
     # Business logic handled by service layer
     db_note = await NoteService.create_and_structure_note(db, current_user.id, note_in)
     
+    # Trigger Async Risk Analysis
+    background_tasks.add_task(NoteService.analyze_risks_task, db_note.id)
+    
     # Transform for response (JSON string to dict)
     response_data = NoteResponse.from_orm(db_note)
     if db_note.structured_content:
         response_data.structured_content = json.loads(db_note.structured_content)
+    # AI insights async, so likely None immediately, but just in case
+    if db_note.ai_insights:
+        response_data.ai_insights = {
+            "risk_score": db_note.ai_insights.risk_score,
+            "red_flags": json.loads(db_note.ai_insights.red_flags or "[]"),
+            "suggestions": json.loads(db_note.ai_insights.suggestions or "[]"),
+            "missing_info": json.loads(db_note.ai_insights.missing_info or "[]")
+        }
     return response_data
 
 @router.get("/", response_model=List[NoteResponse])
@@ -57,6 +70,13 @@ def get_notes(
         nr = NoteResponse.from_orm(note)
         if note.structured_content:
             nr.structured_content = json.loads(note.structured_content)
+        if note.ai_insights:
+            nr.ai_insights = {
+                "risk_score": note.ai_insights.risk_score,
+                "red_flags": json.loads(note.ai_insights.red_flags or "[]"),
+                "suggestions": json.loads(note.ai_insights.suggestions or "[]"),
+                "missing_info": json.loads(note.ai_insights.missing_info or "[]")
+            }
         result.append(nr)
     return result
 
@@ -75,6 +95,13 @@ def get_note(
     nr = NoteResponse.from_orm(note)
     if note.structured_content:
         nr.structured_content = json.loads(note.structured_content)
+    if note.ai_insights:
+        nr.ai_insights = {
+            "risk_score": note.ai_insights.risk_score,
+            "red_flags": json.loads(note.ai_insights.red_flags or "[]"),
+            "suggestions": json.loads(note.ai_insights.suggestions or "[]"),
+            "missing_info": json.loads(note.ai_insights.missing_info or "[]")
+        }
     return nr
 
 @router.put("/{id}", response_model=NoteResponse)
@@ -93,6 +120,13 @@ def update_note(
     nr = NoteResponse.from_orm(note)
     if note.structured_content:
         nr.structured_content = json.loads(note.structured_content)
+    if note.ai_insights:
+        nr.ai_insights = {
+            "risk_score": note.ai_insights.risk_score,
+            "red_flags": json.loads(note.ai_insights.red_flags or "[]"),
+            "suggestions": json.loads(note.ai_insights.suggestions or "[]"),
+            "missing_info": json.loads(note.ai_insights.missing_info or "[]")
+        }
     return nr
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

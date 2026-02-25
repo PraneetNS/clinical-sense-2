@@ -28,7 +28,11 @@ def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(StructuredFormatter())
     
+    file_handler = logging.FileHandler("backend_errors.log", encoding="utf-8")
+    file_handler.setFormatter(StructuredFormatter())
+
     logger.addHandler(handler)
+    logger.addHandler(file_handler)
     return logger
 
 logger = setup_logging()

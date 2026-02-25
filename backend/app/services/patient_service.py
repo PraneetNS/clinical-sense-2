@@ -20,6 +20,14 @@ class PatientService:
 
     @staticmethod
     def create_patient(db: Session, patient_in: PatientCreate, creator_id: int = None):
+        # Validate Date of Birth
+        if patient_in.date_of_birth:
+            now = datetime.datetime.utcnow()
+            if patient_in.date_of_birth > now:
+                raise HTTPException(status_code=400, detail="Date of birth cannot be in the future")
+            if patient_in.date_of_birth.year < 1900:
+                raise HTTPException(status_code=400, detail="Date of birth must be after 1900")
+                
         try:
             db_patient = Patient(**patient_in.model_dump(), user_id=creator_id)
             db.add(db_patient)
@@ -65,10 +73,17 @@ class PatientService:
     @staticmethod
     async def get_patient_report(db: Session, patient_id: int, user_id: int):
         patient = PatientService.get_patient(db, patient_id, user_id)
-        from ..models import ClinicalNote, Task, Document
+        from ..models import ClinicalNote, Task, Document, PatientCommunication, SecureMessage, ShiftHandover, ReadmissionRisk
         notes = db.query(ClinicalNote).filter(ClinicalNote.patient_id == patient_id, ClinicalNote.is_deleted == False).order_by(ClinicalNote.created_at.desc()).all()
         tasks = db.query(Task).filter(Task.patient_id == patient_id).all()
         docs = db.query(Document).filter(Document.patient_id == patient_id, Document.is_deleted == False).all()
+        
+        # New models queries
+        messages = db.query(SecureMessage).filter(SecureMessage.patient_id == patient_id).order_by(SecureMessage.created_at.desc()).all()
+        communications = db.query(PatientCommunication).filter(PatientCommunication.patient_id == patient_id).all()
+        handovers = db.query(ShiftHandover).filter(ShiftHandover.patient_id == patient_id).all()
+        risks = db.query(ReadmissionRisk).filter(ReadmissionRisk.patient_id == patient_id).order_by(ReadmissionRisk.created_at.desc()).all()
+
         timeline = PatientService.get_unified_timeline(db, patient_id, user_id=user_id)
         
         # Prepare text for AI summary
@@ -76,17 +91,76 @@ class PatientService:
         for n in notes[:5]: # Last 5 notes for summary
             history_text += f"\n- {n.title}: {n.raw_content[:200]}"
             
-        from .ai.ai_service import AIService
-        ai = AIService()
-        summary = await ai.summarize_patient_initially(history_text)
+        try:
+            from .ai.ai_service import AIService
+            ai = AIService()
+            summary = await ai.summarize_patient_initially(history_text)
+        except Exception as e:
+            print(f"AI summary failed: {e}")
+            summary = "AI summary temporarily unavailable. Please review clinical notes manually."
         
+        # Fetch AI encounters
+        from ..models import AIEncounter
+        from ..services.clinical_intelligence import _safe_json_loads
+        db_encounters = db.query(AIEncounter).filter(AIEncounter.patient_id == patient_id).order_by(AIEncounter.created_at.desc()).limit(5).all()
+        
+        # Simple mapping to EncounterResponse structure for the report
+        encounters = []
+        for e in db_encounters:
+            soap = _safe_json_loads(e.soap_note, {})
+            
+            # Map child objects to Ensure JSON fields are parsed
+            meds_out = []
+            for m in e.medications:
+                meds_out.append({
+                    "id": m.id,
+                    "name": m.name,
+                    "dosage": m.dosage,
+                    "frequency": m.frequency,
+                    "route": m.route,
+                    "duration": m.duration,
+                    "start_date_text": m.start_date_text,
+                    "requires_confirmation": m.requires_confirmation,
+                    "fields_required": _safe_json_loads(m.fields_required, []),
+                    "confidence": m.confidence or "medium"
+                })
+
+            encounters.append({
+                "encounter_id": e.id,
+                "patient_id": e.patient_id,
+                "status": e.status,
+                "is_confirmed": e.is_confirmed,
+                "encounter_date": e.encounter_date,
+                "chief_complaint": e.chief_complaint or "",
+                "soap": soap,
+                "medications": meds_out,
+                "diagnoses": e.diagnoses,
+                "billing": e.billing_items,
+                "timeline_events": e.timeline_events,
+                "followups": e.followups,
+                "risk_score": e.risk_score or "Low",
+                "risk_flags": _safe_json_loads(e.risk_flags, []),
+                "legal_flags": _safe_json_loads(e.legal_flags, []),
+                "admission_required": e.admission_required,
+                "icu_required": e.icu_required,
+                "follow_up_days": e.follow_up_days,
+                "case_status": e.case_status,
+                "billing_complexity": e.billing_complexity or "medium",
+                "created_at": e.created_at,
+            })
+
         return {
             "patient": patient,
             "notes": notes,
             "tasks": tasks,
             "documents": docs,
             "timeline": timeline,
+            "encounters": encounters,
             "summary": summary,
+            "messages": messages,
+            "communications": communications,
+            "handovers": handovers,
+            "risks": risks,
             "generated_at": datetime.datetime.utcnow()
         }
 
@@ -128,6 +202,13 @@ class PatientService:
         tasks = db.query(Task).filter(Task.patient_id == patient_id).all()
         history = db.query(MedicalHistory).filter(MedicalHistory.patient_id == patient_id).all()
         
+        # New models
+        from ..models import PatientCommunication, SecureMessage, ShiftHandover, ReadmissionRisk
+        comms = db.query(PatientCommunication).filter(PatientCommunication.patient_id == patient_id).all()
+        msgs = db.query(SecureMessage).filter(SecureMessage.patient_id == patient_id).all()
+        handovers = db.query(ShiftHandover).filter(ShiftHandover.patient_id == patient_id).all()
+        risks = db.query(ReadmissionRisk).filter(ReadmissionRisk.patient_id == patient_id).all()
+
         events = []
         
         for n in notes:
@@ -136,7 +217,7 @@ class PatientService:
                 "type": "note",
                 "title": n.title or "Clinical Note",
                 "description": n.raw_content[:200] + "..." if len(n.raw_content) > 200 else n.raw_content,
-                "timestamp": n.created_at,
+                "timestamp": n.encounter_date or n.created_at,
                 "author": n.owner.full_name if n.owner else "System",
                 "status": n.status,
                 "metadata": {"note_type": n.note_type}
@@ -199,10 +280,53 @@ class PatientService:
                 "type": "history",
                 "title": f"Medical Condition: {h.condition_name}",
                 "description": f"Status: {h.status}. {h.notes or ''}",
-                "timestamp": h.created_at,
+                "timestamp": h.diagnosis_date or h.created_at,
                 "status": h.status
             })
             
+        # New Events
+        for c in comms:
+            events.append({
+                "id": c.id,
+                "type": "communication",
+                "title": "Patient Communication Summary",
+                "description": f"Summary generated. Diagnosis: {c.simplified_diagnosis[:50]}...",
+                "timestamp": c.created_at,
+                "status": "Generated"
+            })
+            
+        for msg in msgs:
+            events.append({
+                "id": msg.id,
+                "type": "message",
+                "title": f"Message: {msg.direction}",
+                "description": msg.content[:100],
+                "timestamp": msg.created_at,
+                "status": msg.status,
+                "metadata": {"urgency": msg.urgency_score, "category": msg.category}
+            })
+
+        for ho in handovers:
+            events.append({
+                "id": ho.id,
+                "type": "handover",
+                "title": f"{ho.shift_type} Shift Handover",
+                "description": "Shift summary generated.",
+                "timestamp": ho.created_at,
+                "author": ho.generator.full_name if ho.generator else "System",
+                "status": "Completed"
+            })
+            
+        for r in risks:
+            events.append({
+                "id": r.id,
+                "type": "risk",
+                "title": "Readmission Risk Assessment",
+                "description": f"Score: {r.risk_score}, Level: {r.risk_level}",
+                "timestamp": r.created_at,
+                "status": r.risk_level
+            })
+
         # Sort by timestamp descending
         events.sort(key=lambda x: x["timestamp"], reverse=True)
         return events

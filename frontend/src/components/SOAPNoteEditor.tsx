@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Save, Copy, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Save, Copy, RotateCcw, AlertTriangle, Sparkles } from 'lucide-react';
+import CopilotWidget from './ai/CopilotWidget';
 
 interface NoteData {
     [key: string]: string;
@@ -39,6 +40,8 @@ export default function DynamicNoteEditor({
     noteType?: string
 }) {
     const [data, setData] = useState<NoteData>(initialData || {});
+    const [copilotEnabled, setCopilotEnabled] = useState(false);
+    const [activeField, setActiveField] = useState<string | null>(null);
 
     // Fallback to SOAP if type unknown or generic keys found
     const sections = NOTE_SCHEMAS[noteType] || NOTE_SCHEMAS['SOAP'];
@@ -52,6 +55,17 @@ export default function DynamicNoteEditor({
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <h2 className="text-2xl font-bold text-slate-900">Structured {noteType} Note</h2>
                 <div className="flex gap-3">
+                    <button
+                        onClick={() => setCopilotEnabled(!copilotEnabled)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-semibold border ${copilotEnabled
+                            ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}
+                    >
+                        <Sparkles size={16} className={copilotEnabled ? "fill-indigo-400" : ""} />
+                        {copilotEnabled ? "Copilot Active" : "Enable Copilot"}
+                    </button>
+                    <div className="w-px h-8 bg-slate-200 my-auto mx-2"></div>
                     <button
                         onClick={() => onSave(data, 'draft')}
                         className="flex items-center gap-2 px-4 py-2 text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors font-semibold"
@@ -85,10 +99,19 @@ export default function DynamicNoteEditor({
                             className="w-full h-48 p-6 text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500 resize-none"
                             value={data[section.key] || ''}
                             onChange={(e) => handleChange(section.key, e.target.value)}
+                            onFocus={() => setActiveField(section.key)}
+                            onBlur={() => setTimeout(() => setActiveField(null), 200)} // Small delay to allow clicks on widget
                         />
                     </div>
                 ))}
             </div>
+
+            {/* Real-time Copilot Widget */}
+            <CopilotWidget
+                activeField={activeField || ''}
+                content={activeField ? data[activeField] : ''}
+                isActive={copilotEnabled && !!activeField}
+            />
         </div>
     );
 }

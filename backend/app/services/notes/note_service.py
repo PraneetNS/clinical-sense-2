@@ -5,6 +5,7 @@ from ...models import ClinicalNote, AuditLog, User, NoteVersion
 from ...schemas.notes import NoteCreateRequest, NoteUpdateRequest
 from ...services.ai.ai_service import AIService
 from ...services.embedding_service import embedding_service
+from ...services.safety_service import safety_service
 import json
 import numpy as np
 
@@ -34,7 +35,11 @@ class NoteService:
         
         try:
             # 3. Generate structure using AI
-            structured_data = await ai_service.structure_clinical_note(note_in.raw_content, note_in.note_type)
+            structured_data = await ai_service.structure_clinical_note(
+                note_in.raw_content, 
+                note_in.note_type,
+                encounter_date=note_in.encounter_date.isoformat() if note_in.encounter_date else None
+            )
             
             # 3. Generate embedding (CPU bound)
             embedding = await run_in_threadpool(embedding_service.generate_embedding, f"{note_in.title} {note_in.raw_content}")
@@ -48,6 +53,7 @@ class NoteService:
                 status="draft",
                 note_type=note_in.note_type,
                 patient_id=note_in.patient_id,
+                encounter_date=note_in.encounter_date,
                 embedding=embedding,
                 idempotency_key=note_in.idempotency_key
             )
@@ -156,11 +162,15 @@ class NoteService:
             for field, value in update_data.items():
                 setattr(db_note, field, value)
                 
+            if "encounter_date" in update_data:
+                db_note.encounter_date = update_data["encounter_date"]
+                
             db.commit()
             db.refresh(db_note)
             return db_note
-        except Exception:
+        except Exception as e:
             db.rollback()
+            print(f"Update Note Error: {str(e)}") # Temporary logging
             raise
 
     @staticmethod
@@ -196,7 +206,7 @@ class NoteService:
         return [r[0] for r in results[:limit]]
 
     @staticmethod
-    def get_patient_timeline(db: Session, patient_id: int, user_id: int, skip: int = 0, limit: int = 100):
+    def get_patient_notes_by_patient_id(db: Session, patient_id: int, user_id: int, skip: int = 0, limit: int = 100):
         # Verify access to patient first
         from ..patient_service import PatientService
         PatientService.get_patient(db, patient_id, user_id)
@@ -214,3 +224,71 @@ class NoteService:
         if not note: 
             return []
         return db.query(NoteVersion).filter(NoteVersion.note_id == note_id).order_by(NoteVersion.created_at.desc()).all()
+
+    @staticmethod
+    async def analyze_risks_task(note_id: int):
+        from ...db.session import SessionLocal
+        from ...models import ClinicalAIInsight, Patient
+        
+        db = SessionLocal()
+        try:
+            note = db.query(ClinicalNote).filter(ClinicalNote.id == note_id).first()
+            if not note:
+                return
+            
+            # Gather patient context
+            patient_context = {}
+            if note.patient_id:
+                patient = db.query(Patient).filter(Patient.id == note.patient_id).first()
+                if patient:
+                    # Fetch related data
+                    meds = [m.name for m in patient.medications]
+                    allergies = [a.allergen for a in patient.allergies]
+                    history = [h.condition_name for h in patient.medical_history]
+                    
+                    patient_context = {
+                        "history": ", ".join(history),
+                        "medications": meds,
+                        "allergies": allergies,
+                        "vitals": "See note content" 
+                    }
+
+            # Parse note content
+            try:
+                content = json.loads(note.structured_content) if note.structured_content else {"text": note.raw_content}
+            except:
+                content = {"text": note.raw_content}
+            
+            # AI Analysis
+            analysis = await ai_service.analyze_risks(content, patient_context)
+            
+            # Save Insight
+            # Check if exists
+            insight = db.query(ClinicalAIInsight).filter(ClinicalAIInsight.note_id == note_id).first()
+            if not insight:
+                insight = ClinicalAIInsight(note_id=note_id)
+                db.add(insight)
+            
+            insight.risk_score = analysis.get("risk_score", "Low")
+            insight.red_flags = json.dumps(analysis.get("red_flags", []))
+            insight.suggestions = json.dumps(analysis.get("suggestions", []))
+            insight.missing_info = json.dumps(analysis.get("missing_info", []))
+            
+            db.commit()
+            
+            # --- WORKFLOW ENGINE TRIGGER ---
+            try:
+                from ...services.clinical.workflow_service import WorkflowService
+                wf = WorkflowService(db, ai_service)
+                await wf.analyze_trajectory(note_id)
+                await wf.generate_patient_summary(note_id)
+                await wf.process_auto_tasks(note_id) # Detailed task extraction
+            except Exception as wf_e:
+                 print(f"Workflow Engine Trigger Failed: {wf_e}")
+            # -------------------------------
+            
+        except Exception as e:
+            # logger.error(f"Background Risk Analysis Failed: {e}")
+            print(f"Background Risk Analysis Failed: {e}")
+        finally:
+            db.close()

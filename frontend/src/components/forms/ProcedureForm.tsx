@@ -82,11 +82,17 @@ export default function ProcedureForm({ initialData, notes = [], admissions = []
                         className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                     >
                         <option value="">-- None --</option>
-                        {notes.map(note => (
-                            <option key={note.id} value={note.id}>
-                                {new Date(note.created_at).toLocaleDateString()} - {note.title}
-                            </option>
-                        ))}
+                        {notes.map(note => {
+                            const noteDate = note.timestamp || note.created_at;
+                            const displayDate = noteDate && !isNaN(new Date(noteDate).getTime())
+                                ? new Date(noteDate).toLocaleDateString()
+                                : 'Unknown Date';
+                            return (
+                                <option key={note.id} value={note.id}>
+                                    {displayDate} - {note.title}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
                 <div>
@@ -97,11 +103,17 @@ export default function ProcedureForm({ initialData, notes = [], admissions = []
                         className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                     >
                         <option value="">-- None --</option>
-                        {admissions.map(adm => (
-                            <option key={adm.id} value={adm.id}>
-                                {new Date(adm.admission_date).toLocaleDateString()} - {adm.reason}
-                            </option>
-                        ))}
+                        {admissions.map(adm => {
+                            const admDate = adm.admission_date;
+                            const displayDate = admDate && !isNaN(new Date(admDate).getTime())
+                                ? new Date(admDate).toLocaleDateString()
+                                : 'Unknown Date';
+                            return (
+                                <option key={adm.id} value={adm.id}>
+                                    {displayDate} - {adm.reason}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
             </div>

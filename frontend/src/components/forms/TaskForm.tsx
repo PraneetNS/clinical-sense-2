@@ -10,7 +10,9 @@ export default function TaskForm({ initialData, onSubmit, onCancel }: TaskFormPr
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         description: initialData?.description || '',
-        due_date: initialData?.due_date ? new Date(initialData.due_date).toISOString().split('T')[0] : '',
+        due_date: initialData?.due_date && !isNaN(new Date(initialData.due_date).getTime())
+            ? new Date(initialData.due_date).toISOString().split('T')[0]
+            : '',
         status: initialData?.status || 'Pending'
     });
 

@@ -33,6 +33,7 @@ class User(Base):
     procedures_performed = relationship("Procedure", back_populates="performer")
     documents_uploaded = relationship("Document", back_populates="uploader")
     audit_logs = relationship("AuditLog", back_populates="user")
+    ai_metrics = relationship("DoctorAIMetrics", back_populates="user", uselist=False)
 
 class Patient(Base):
     __tablename__ = "patients"
@@ -76,6 +77,7 @@ class Patient(Base):
     documents = relationship("Document", back_populates="patient")
     tasks = relationship("Task", back_populates="patient")
     billing_items = relationship("BillingItem", back_populates="patient")
+    risk_profile = relationship("HospitalPatientRisk", back_populates="patient", uselist=False)
 
 class Admission(Base):
     __tablename__ = "admissions"
@@ -111,6 +113,9 @@ class ClinicalNote(Base):
     note_type = Column(String, default="SOAP", index=True) # 'SOAP', 'PROGRESS', 'DISCHARGE'
     status = Column(String, default="draft") # 'draft', 'finalized'
     
+    encounter_date = Column(DateTime, nullable=True, index=True)
+    
+    patient_summary = Column(Text, nullable=True) # Patient-friendly summary
     embedding = Column(Text, nullable=True) # JSON string for vector search
     
     is_deleted = Column(Boolean, default=False, index=True)
@@ -126,6 +131,7 @@ class ClinicalNote(Base):
     admission = relationship("Admission", back_populates="clinical_notes")
     audit_logs = relationship("AuditLog", back_populates="note")
     versions = relationship("NoteVersion", back_populates="note")
+    ai_insights = relationship("ClinicalAIInsight", back_populates="note", uselist=False)
 
 class NoteVersion(Base):
     __tablename__ = "note_versions"
@@ -230,22 +236,63 @@ class Document(Base):
     patient = relationship("Patient", back_populates="documents")
     uploader = relationship("User", back_populates="documents_uploaded")
 
+
+
+class ClinicalTrajectory(Base):
+    __tablename__ = "clinical_trajectories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=False, index=True)
+    
+    trend = Column(String) # Improving, Stable, Deteriorating, Uncertain
+    risk_score = Column(Integer) # 0-100
+    confidence_score = Column(Float) # 0.0-1.0
+    key_changes = Column(Text) # JSON list of changes
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient")
+    note = relationship("ClinicalNote")
+
+class DischargeReadiness(Base):
+    __tablename__ = "discharge_readiness"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    admission_id = Column(Integer, ForeignKey("admissions.id"), nullable=True, index=True) # Optional if outpatient tracking
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    
+    readiness_score = Column(Integer) # 0-100
+    missing_requirements = Column(Text) # JSON list
+    suggested_date = Column(String, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient")
+    admission = relationship("Admission")
+
 class Task(Base):
     __tablename__ = "tasks"
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    source_note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=True)
     
     description = Column(String, nullable=False)
     due_date = Column(DateTime, nullable=True, index=True)
     status = Column(String, default="Pending", index=True) # 'Pending', 'In Progress', 'Completed'
+    
+    priority = Column(String, default="Medium") # High, Medium, Low
+    category = Column(String, default="General") # Lab, Medication, Referral, Imaging, Follow-up
+    is_auto_generated = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     
     patient = relationship("Patient", back_populates="tasks")
     assignee = relationship("User", back_populates="tasks_assigned")
+    source_note = relationship("ClinicalNote")
 
 class BillingItem(Base):
     __tablename__ = "billing_items"
@@ -278,3 +325,345 @@ class AuditLog(Base):
     
     user = relationship("User", back_populates="audit_logs")
     note = relationship("ClinicalNote", back_populates="audit_logs")
+
+class ClinicalAIInsight(Base):
+    __tablename__ = "clinical_ai_insights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=False, index=True)
+    
+    risk_score = Column(String, nullable=True) # High/Medium/Low
+    red_flags = Column(Text, nullable=True) # JSON list
+    suggestions = Column(Text, nullable=True) # JSON list
+    missing_info = Column(Text, nullable=True) # JSON list
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    note = relationship("ClinicalNote", back_populates="ai_insights")
+
+class DifferentialDiagnosis(Base):
+    __tablename__ = "differential_diagnoses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
+    
+    input_data = Column(Text, nullable=False) # JSON of symptoms, vitals, etc.
+    output_data = Column(Text, nullable=False) # JSON of differentials
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+# --- AI Hospital Operating System Models ---
+
+class HospitalPatientRisk(Base):
+    __tablename__ = "hospital_patient_risk"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, unique=True, index=True)
+    
+    risk_score = Column(Integer, default=0) # 0-100
+    risk_level = Column(String, default="Low") # Low, Medium, High, Critical
+    suggested_actions = Column(Text, nullable=True) # JSON list of actions
+    
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", back_populates="risk_profile")
+
+class DoctorAIMetrics(Base):
+    __tablename__ = "doctor_ai_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    
+    workload_score = Column(Float, default=0.0) # 0-100 index
+    burnout_probability = Column(Float, default=0.0) # 0-1.0
+    active_patients_count = Column(Integer, default=0)
+    notes_last_7d = Column(Integer, default=0)
+    
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    user = relationship("User", back_populates="ai_metrics")
+
+
+# --- New AI Communication & Safety Models ---
+
+class PatientCommunication(Base):
+    __tablename__ = "patient_communications"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=True)
+    
+    simplified_diagnosis = Column(Text)
+    treatment_plan = Column(Text) # JSON list
+    medication_explanation = Column(Text) # JSON list
+    warning_signs = Column(Text) # JSON list
+    next_steps = Column(Text, nullable=True)
+    language = Column(String, default="en")
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", backref="communications")
+    note = relationship("ClinicalNote")
+
+class SecureMessage(Base):
+    __tablename__ = "secure_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Doctor handling the thread or target
+    
+    direction = Column(String) # 'Inbound' (from Patient), 'Outbound' (from Doctor)
+    content = Column(Text, nullable=False)
+    
+    urgency_score = Column(Integer, default=0) # 0-10
+    category = Column(String, default="Routine") # Routine, Urgent, Emergency
+    flagged_keywords = Column(Text, nullable=True) # JSON list
+    
+    draft_response = Column(Text, nullable=True) # AI Draft
+    status = Column(String, default="Unread") # Unread, Replied, Archived
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", backref="messages")
+    user = relationship("User")
+
+class ShiftHandover(Base):
+    __tablename__ = "shift_handovers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    generated_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    shift_type = Column(String) # "Day", "Night"
+    content = Column(Text) # JSON summary
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", backref="handovers")
+    generator = relationship("User")
+
+class ReadmissionRisk(Base):
+    __tablename__ = "readmission_risks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    
+    risk_score = Column(Integer) # 0-100
+    risk_level = Column(String) # Low, Medium, High
+    contributing_factors = Column(Text) # JSON
+    prevention_recommendations = Column(Text) # JSON
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", backref="readmission_risks")
+
+class MedicationAlert(Base):
+    __tablename__ = "medication_alerts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    medication_id = Column(Integer, ForeignKey("medications.id"), nullable=True)
+    
+    alert_type = Column(String) # Interaction, Allergy, Contraindication
+    severity = Column(String) # High, Medium, Low
+    description = Column(Text)
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    patient = relationship("Patient", backref="medication_alerts")
+    medication = relationship("Medication")
+
+
+# =========================================================
+# CLINICAL INTELLIGENCE PLATFORM — AI ENCOUNTER MODELS
+# =========================================================
+
+class AIEncounter(Base):
+    """Root record for a single AI-orchestrated clinical encounter."""
+    __tablename__ = "ai_encounters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    encounter_date = Column(DateTime, nullable=False)
+    raw_note = Column(Text, nullable=False)
+
+    # SOAP output (JSON string)
+    soap_note = Column(Text, nullable=True)
+
+    # Summary outputs
+    chief_complaint = Column(String, nullable=True)
+    case_status = Column(String, default="active")           # active / needs_review / closed
+    billing_complexity = Column(String, nullable=True)       # low / medium / high
+    admission_required = Column(Boolean, default=False)
+    icu_required = Column(Boolean, default=False)
+    follow_up_days = Column(Integer, nullable=True)
+
+    # Risk
+    risk_score = Column(String, nullable=True)               # High / Medium / Low
+    risk_flags = Column(Text, nullable=True)                 # JSON list
+
+    # Medico-legal
+    legal_flags = Column(Text, nullable=True)                # JSON list
+
+    # Status flags
+    status = Column(String, default="pending")               # pending / ready / confirmed / rejected
+    is_confirmed = Column(Boolean, default=False)
+    confirmed_at = Column(DateTime, nullable=True)
+    confirmed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Token usage telemetry (JSON)
+    token_usage = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    # Relationships
+    patient = relationship("Patient", backref="ai_encounters")
+    note = relationship("ClinicalNote")
+    creator = relationship("User", foreign_keys=[created_by_id])
+    confirmer = relationship("User", foreign_keys=[confirmed_by_id])
+    medications = relationship("AIGeneratedMedication", back_populates="encounter", cascade="all, delete-orphan")
+    diagnoses = relationship("AIGeneratedDiagnosis", back_populates="encounter", cascade="all, delete-orphan")
+    billing_items = relationship("AIGeneratedBilling", back_populates="encounter", cascade="all, delete-orphan")
+    timeline_events = relationship("AITimelineEvent", back_populates="encounter", cascade="all, delete-orphan")
+    followups = relationship("AIFollowupRecommendation", back_populates="encounter", cascade="all, delete-orphan")
+
+
+class AIGeneratedMedication(Base):
+    """AI-extracted medication from a clinical note — pending doctor confirmation."""
+    __tablename__ = "ai_generated_medications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    name = Column(String, nullable=False)
+    dosage = Column(String, nullable=True)
+    frequency = Column(String, nullable=True)
+    route = Column(String, nullable=True)
+    duration = Column(String, nullable=True)
+    start_date_text = Column(String, nullable=True)       # Raw text, e.g. "start immediately"
+
+    # If structured date is missing, doctor must confirm
+    requires_confirmation = Column(Boolean, default=False)
+    fields_required = Column(Text, nullable=True)         # JSON list of missing fields
+
+    # Doctor confirmation
+    is_confirmed = Column(Boolean, default=False)
+    confirmed_medication_id = Column(Integer, ForeignKey("medications.id"), nullable=True)
+
+    ai_generated = Column(Boolean, default=True)
+    confidence = Column(String, nullable=True)            # high / medium / low
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="medications")
+    patient = relationship("Patient")
+    confirmed_medication = relationship("Medication")
+
+
+class AIGeneratedDiagnosis(Base):
+    """AI-inferred ICD-10 diagnosis from a clinical note."""
+    __tablename__ = "ai_generated_diagnoses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    condition_name = Column(String, nullable=False)
+    icd10_code = Column(String, nullable=True)
+    confidence_score = Column(Float, nullable=True)       # 0.0 - 1.0
+    reasoning = Column(Text, nullable=True)
+    is_primary = Column(Boolean, default=False)
+
+    # Doctor confirmation
+    is_confirmed = Column(Boolean, default=False)
+
+    ai_generated = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="diagnoses")
+    patient = relationship("Patient")
+
+
+class AIGeneratedBilling(Base):
+    """AI-inferred billing draft from encounter data."""
+    __tablename__ = "ai_generated_billing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    cpt_code = Column(String, nullable=True)
+    description = Column(String, nullable=False)
+    estimated_cost = Column(Float, nullable=True)
+    complexity = Column(String, nullable=True)            # low / medium / high
+    confidence = Column(Float, nullable=True)             # 0.0 - 1.0
+    requires_review = Column(Boolean, default=True)
+    review_reason = Column(String, nullable=True)
+
+    # Doctor confirmation
+    is_confirmed = Column(Boolean, default=False)
+    confirmed_billing_id = Column(Integer, ForeignKey("billing_items.id"), nullable=True)
+
+    ai_generated = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="billing_items")
+    patient = relationship("Patient")
+    confirmed_billing = relationship("BillingItem")
+
+
+class AITimelineEvent(Base):
+    """AI-extracted timeline event from a clinical note."""
+    __tablename__ = "ai_timeline_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    event_type = Column(String, nullable=False)           # symptom_onset, lab_result, medication_change, etc.
+    event_description = Column(Text, nullable=False)
+    event_date_text = Column(String, nullable=True)       # Relative or absolute text
+    event_date = Column(DateTime, nullable=True)          # Parsed datetime if possible
+    severity = Column(String, nullable=True)              # high / medium / low / info
+
+    ai_generated = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="timeline_events")
+    patient = relationship("Patient")
+
+
+class AIFollowupRecommendation(Base):
+    """AI-suggested follow-up actions from an encounter."""
+    __tablename__ = "ai_followup_recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    recommendation = Column(Text, nullable=False)
+    follow_up_type = Column(String, nullable=True)        # lab, referral, imaging, appointment, medication
+    urgency = Column(String, default="routine")           # stat / urgent / routine
+    suggested_days = Column(Integer, nullable=True)
+
+    # Doctor confirmation
+    is_confirmed = Column(Boolean, default=False)
+    converted_task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
+
+    ai_generated = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="followups")
+    patient = relationship("Patient")
+    converted_task = relationship("Task")

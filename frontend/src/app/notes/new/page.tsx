@@ -17,6 +17,7 @@ export default function NewNotePage() {
     const [patients, setPatients] = useState<any[]>([]);
     const [selectedPatientId, setSelectedPatientId] = useState<number | undefined>(undefined);
     const [noteType, setNoteType] = useState('SOAP');
+    const [encounterDate, setEncounterDate] = useState(new Date().toISOString().split('T')[0]);
     const router = useRouter();
 
     // Local Draft Recovery
@@ -52,7 +53,8 @@ export default function NewNotePage() {
                 title: title || "Untitled Note",
                 raw_content: rawContent,
                 note_type: noteType,
-                patient_id: selectedPatientId
+                patient_id: selectedPatientId,
+                encounter_date: encounterDate ? new Date(encounterDate).toISOString() : undefined
             });
             const newNote = response.data;
             setNoteId(newNote.id);
@@ -139,15 +141,26 @@ export default function NewNotePage() {
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Note Title</label>
-                                <input
-                                    type="text"
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="e.g. Pt #9822 - Recurring Migraine"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Encounter Date</label>
+                                    <input
+                                        type="date"
+                                        value={encounterDate}
+                                        onChange={(e) => setEncounterDate(e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Note Title</label>
+                                    <input
+                                        type="text"
+                                        value={title}
+                                        onChange={(e) => setTitle(e.target.value)}
+                                        placeholder="e.g. Pt #9822 - Recurring Migraine"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none"
+                                    />
+                                </div>
                             </div>
 
                             <div>

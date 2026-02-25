@@ -71,8 +71,23 @@ def get_patient_notes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Reusing timeline logic as it returns notes
-    return get_patient_timeline(patient_id, db, current_user)
+    notes = NoteService.get_patient_notes_by_patient_id(db, patient_id, current_user.id)
+    
+    # Transform to schema
+    result = []
+    for note in notes:
+        nr = NoteResponse.from_orm(note)
+        if note.structured_content:
+            nr.structured_content = json.loads(note.structured_content)
+        if note.ai_insights:
+           nr.ai_insights = {
+                "risk_score": note.ai_insights.risk_score,
+                "red_flags": json.loads(note.ai_insights.red_flags or "[]"),
+                "suggestions": json.loads(note.ai_insights.suggestions or "[]"),
+                "missing_info": json.loads(note.ai_insights.missing_info or "[]")
+            }
+        result.append(nr)
+    return result
 
 @router.get("/{patient_id}/report", response_model=PatientReport)
 async def get_patient_report(
@@ -89,7 +104,7 @@ async def get_patient_report_pdf(
     current_user: User = Depends(get_current_user)
 ):
     report_data = await PatientService.get_patient_report(db, patient_id, user_id=current_user.id)
-    pdf_buffer = generate_patient_pdf(report_data)
+    pdf_buffer = generate_patient_pdf(report_data, current_user)
     
     return StreamingResponse(
         pdf_buffer, 

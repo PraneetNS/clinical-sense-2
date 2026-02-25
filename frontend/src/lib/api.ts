@@ -25,10 +25,22 @@ api.interceptors.response.use(
     }
 );
 
+export const getErrorMessage = (err: any): string => {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        return detail.map((d: any) => {
+            const path = d.loc ? d.loc.filter((l: any) => l !== 'body').join('.') : '';
+            return `${path ? path + ': ' : ''}${d.msg || 'Validation error'}`;
+        }).join(' | ');
+    }
+    return err.message || 'An unexpected error occurred';
+};
+
 export const notesApi = {
     getAll: (search?: string, mode: string = 'keyword') => api.get('/notes/', { params: { search, mode } }),
     getById: (id: string) => api.get(`/notes/${id}`),
-    create: (data: { raw_content: string; title: string; note_type?: string; patient_id?: number }) => api.post('/notes/structure', data),
+    create: (data: { raw_content: string; title: string; note_type?: string; patient_id?: number; encounter_date?: string }) => api.post('/notes/structure', data),
     generateSoap: (id: string | number) => api.post(`/notes/${id}/generate`),
     update: (id: string | number, data: any) => api.put(`/notes/${id}`, data),
     delete: (id: string | number) => api.delete(`/notes/${id}`),
@@ -95,6 +107,32 @@ export const clinicalApi = {
     addBilling: (patientId: string | number, data: any) => api.post(`/patients/${patientId}/billing`, data),
     updateBilling: (id: string | number, data: any) => api.put(`/patients/billing/${id}`, data),
     deleteBilling: (id: string | number) => api.delete(`/patients/billing/${id}`),
+};
+
+export const aiApi = {
+    differential: (data: any) => api.post('/ai/differential', data),
+    riskAnalysis: (data: any) => api.post('/ai/risk_analysis', data),
+    medicoLegal: (data: any) => api.post('/ai/medico_legal', data),
+};
+
+export const workflowApi = {
+    getDashboard: (patientId: string | number) => api.get(`/workflow/patients/${patientId}/workflow-dashboard`),
+    triggerAnalysis: (noteId: string | number) => api.post(`/workflow/notes/${noteId}/analyze`),
+    checkDischarge: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/discharge-check`),
+};
+
+export const encounterApi = {
+    generate: (data: { patient_id: number; raw_note: string; encounter_date?: string }) =>
+        api.post('/ai/generate_full_encounter', data),
+    list: (patientId: string | number) => api.get(`/ai/encounters/${patientId}`),
+    get: (encounterId: string | number) => api.get(`/ai/encounter/${encounterId}`),
+    confirm: (encounterId: string | number) => api.post(`/ai/encounter/${encounterId}/confirm`),
+    wsUrl: (encounterId: string | number): string => {
+        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1')
+            .replace('http://', 'ws://')
+            .replace('https://', 'wss://');
+        return `${base}/ai/encounter/ws/${encounterId}`;
+    },
 };
 
 export const authApi = {

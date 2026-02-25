@@ -1,12 +1,14 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { notesApi } from '@/lib/api';
-import { ChevronLeft, AlertCircle, History, Trash2 } from 'lucide-react';
+import { notesApi, workflowApi } from '@/lib/api';
+import { ChevronLeft, AlertCircle, History, Trash2, BrainCircuit } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import SOAPNoteEditor from '@/components/SOAPNoteEditor';
+import GlobalRiskPanel from '@/components/ai/GlobalRiskPanel';
+import DifferentialDiagnosisTool from '@/components/ai/DifferentialDiagnosisTool';
 
 export default function NoteDetailPage() {
     const { id } = useParams();
@@ -15,6 +17,16 @@ export default function NoteDetailPage() {
     const [error, setError] = useState<string | null>(null);
     const router = useRouter();
     const { showToast } = useToast();
+
+    const handleRunWorkflowAnalysis = async () => {
+        try {
+            showToast("Running Clinical Workflow Analysis...", "info");
+            await workflowApi.runAnalysis(id as string);
+            showToast("Workflow Analysis Complete", "success");
+        } catch (err) {
+            showToast("Analysis Failed", "error");
+        }
+    };
 
     useEffect(() => {
         const fetchNote = async () => {
@@ -104,76 +116,87 @@ export default function NoteDetailPage() {
                     </Link>
                     <h1 className="text-xl font-bold text-slate-900">{note?.title || "Note Detail"}</h1>
                 </div>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => router.push(`/notes/${id}/history`)}
-                        className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
-                    >
-                        <History size={18} /> View Audit Logs
-                    </button>
-                    <div className="w-px h-6 bg-slate-200"></div>
-                    <button
-                        onClick={handleDelete}
-                        className="flex items-center gap-2 text-red-400 hover:text-red-600 transition-colors text-sm font-medium"
-                    >
-                        <Trash2 size={18} /> Delete Note
-                    </button>
-                </div>
-            </nav>
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={handleRunWorkflowAnalysis}
+                                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 transition-colors text-sm font-bold bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
+                            >
+                                <BrainCircuit size={18} /> Deep Analysis
+                            </button>
+                            <button
+                                onClick={() => router.push(`/notes/${id}/history`)}
+                                className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
+                            >
+                                <History size={18} /> View Audit Logs
+                            </button>
+                            <div className="w-px h-6 bg-slate-200"></div>
+                            <button
+                                onClick={handleDelete}
+                                className="flex items-center gap-2 text-red-400 hover:text-red-600 transition-colors text-sm font-medium"
+                            >
+                                <Trash2 size={18} /> Delete Note
+                            </button>
+                        </div>
+                    </nav>
 
-            <main className="flex-1 p-10 max-w-6xl mx-auto w-full">
-                {/* Safety Violations */}
-                {safetyErrors.length > 0 && (
-                    <div className="mb-8 bg-red-50 border border-red-200 p-6 rounded-xl animate-shake">
-                        <div className="flex items-start gap-4">
-                            <div className="p-2 bg-red-100 rounded-lg text-red-600">
-                                <AlertCircle size={24} />
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-lg font-bold text-red-800 mb-2">Safety Policy Violation</h3>
-                                <p className="text-sm text-red-600 mb-4">
-                                    Your input contains restricted language. The system prevents saving content that includes prescriptive advice, specific dosage recommendations, or prognostic guarantees.
-                                </p>
-                                <ul className="list-disc pl-5 space-y-1">
-                                    {safetyErrors.map((err, i) => (
-                                        <li key={i} className="text-sm font-medium text-red-800">{err}</li>
-                                    ))}
-                                </ul>
-                                <div className="mt-4 p-3 bg-white/50 rounded-lg text-xs text-red-800 font-mono">
-                                    Please rephrase using observational language (&quot;Patient reports taking...&quot;, &quot;Clinician plans to prescribe...&quot;)
+                    <main className="flex-1 p-10 max-w-6xl mx-auto w-full">
+                        {/* Safety Violations */}
+                        {safetyErrors.length > 0 && (
+                            <div className="mb-8 bg-red-50 border border-red-200 p-6 rounded-xl animate-shake">
+                                <div className="flex items-start gap-4">
+                                    <div className="p-2 bg-red-100 rounded-lg text-red-600">
+                                        <AlertCircle size={24} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-bold text-red-800 mb-2">Safety Policy Violation</h3>
+                                        <p className="text-sm text-red-600 mb-4">
+                                            Your input contains restricted language. The system prevents saving content that includes prescriptive advice, specific dosage recommendations, or prognostic guarantees.
+                                        </p>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                            {safetyErrors.map((err, i) => (
+                                                <li key={i} className="text-sm font-medium text-red-800">{err}</li>
+                                            ))}
+                                        </ul>
+                                        <div className="mt-4 p-3 bg-white/50 rounded-lg text-xs text-red-800 font-mono">
+                                            Please rephrase using observational language (&quot;Patient reports taking...&quot;, &quot;Clinician plans to prescribe...&quot;)
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                        )}
+
+                        {/* AI Risk Analysis Panel */}
+                        {note?.ai_insights && (
+                            <div className="mb-8">
+                                <GlobalRiskPanel insights={note.ai_insights} />
+                            </div>
+                        )}
+
+                        {/* Differential Diagnosis Tool (Collapsible or just placed below) */}
+                        <div className="mb-8">
+                            <DifferentialDiagnosisTool />
                         </div>
-                    </div>
-                )}
 
-                {error && (
-                    <div className="mb-8 bg-orange-50 border border-orange-200 text-orange-800 p-4 rounded-xl flex items-center gap-3">
-                        <AlertCircle size={20} />
-                        <p className="text-sm font-medium">{error}</p>
-                    </div>
-                )}
-
-                {note?.structured_content ? (
-                    <SOAPNoteEditor
-                        initialData={note.structured_content}
-                        onSave={handleSave}
-                        noteType={note.note_type}
-                    />
-                ) : (
-                    <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
-                        <AlertCircle size={48} className="mx-auto text-amber-500 mb-4" />
-                        <h2 className="text-xl font-bold text-slate-900 mb-2">Structure Not Found</h2>
-                        <p className="text-slate-500 mb-8">This note hasn&apos;t been structured into SOAP format yet.</p>
-                        <button
-                            onClick={() => router.push('/notes/new')}
-                            className="px-6 py-3 bg-teal-600 text-white font-bold rounded-xl"
-                        >
-                            Generate Structure
-                        </button>
-                    </div>
-                )}
-            </main>
-        </div>
-    );
+                        {note?.structured_content ? (
+                            <SOAPNoteEditor
+                                initialData={note.structured_content}
+                                onSave={handleSave}
+                                noteType={note.note_type}
+                            />
+                        ) : (
+                            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+                                <AlertCircle size={48} className="mx-auto text-amber-500 mb-4" />
+                                <h2 className="text-xl font-bold text-slate-900 mb-2">Structure Not Found</h2>
+                                <p className="text-slate-500 mb-8">This note hasn&apos;t been structured into SOAP format yet.</p>
+                                <button
+                                    onClick={() => router.push('/notes/new')}
+                                    className="px-6 py-3 bg-teal-600 text-white font-bold rounded-xl"
+                                >
+                                    Generate Structure
+                                </button>
+                            </div>
+                        )}
+                    </main>
+                </div>
+                );
 }

@@ -26,7 +26,7 @@ export default function LoginPage() {
 
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            router.push('/dashboard');
+            // Router redirect handled by AuthContext
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Authentication failed. Please check your credentials.");
@@ -41,7 +41,7 @@ export default function LoginPage() {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
-            router.push('/dashboard');
+            // Router redirect handled by AuthContext
         } catch (err: any) {
             console.error(err);
             setError("Google login failed.");

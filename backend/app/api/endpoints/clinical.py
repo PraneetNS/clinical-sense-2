@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ...db.session import get_db
-from ...api.deps import get_current_user
+from ...api.deps import get_current_user, get_current_user_from_token
 from ...models import User
 from ... import models
 from ...schemas.clinical import (
@@ -129,6 +129,29 @@ def get_medications(
     current_user: User = Depends(get_current_user)
 ):
     return ClinicalService.get_medications(db, patient_id, user_id=current_user.id)
+
+@router.post("/{patient_id}/medications/check-safety")
+async def check_medication_safety(
+    patient_id: int,
+    med_name: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from ...services.ai.ai_service import AIService
+    ai_service = AIService()
+    
+    # Fetch current active meds
+    current_meds = db.query(models.Medication).filter(
+        models.Medication.patient_id == patient_id, 
+        models.Medication.is_active == True
+    ).all()
+    med_names = [m.name for m in current_meds]
+    
+    # Fetch allergies
+    allergies = db.query(models.Allergy).filter(models.Allergy.patient_id == patient_id).all()
+    allergy_names = [a.allergen for a in allergies]
+    
+    return await ai_service.check_medication_safety(med_names, med_name, allergy_names)
 
 @router.post("/{patient_id}/medications", response_model=MedicationResponse)
 def create_medication(
@@ -256,7 +279,7 @@ async def get_document_file(
     patient_id: int,
     filename: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_from_token)
 ):
     # Security: Verify ownership/access
     ClinicalService._get_patient(db, patient_id, current_user.id)
@@ -317,7 +340,7 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ClinicalService.create_task(db, task_in, patient_id, user_id=current_user.id) # API expects patient_id in URL, service handles it
+    return ClinicalService.create_task(db, task_in, user_id=current_user.id, patient_id=patient_id)
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(

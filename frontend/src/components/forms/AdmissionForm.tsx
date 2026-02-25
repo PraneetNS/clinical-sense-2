@@ -9,8 +9,12 @@ interface AdmissionFormProps {
 export default function AdmissionForm({ initialData, onSubmit, onCancel }: AdmissionFormProps) {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
-        admission_date: initialData?.admission_date ? new Date(initialData.admission_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        discharge_date: initialData?.discharge_date ? new Date(initialData.discharge_date).toISOString().split('T')[0] : '',
+        admission_date: initialData?.admission_date && !isNaN(new Date(initialData.admission_date).getTime())
+            ? new Date(initialData.admission_date).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0],
+        discharge_date: initialData?.discharge_date && !isNaN(new Date(initialData.discharge_date).getTime())
+            ? new Date(initialData.discharge_date).toISOString().split('T')[0]
+            : '',
         reason: initialData?.reason || '',
         status: initialData?.status || 'Admitted',
         notes: initialData?.notes || ''

@@ -21,6 +21,7 @@ class NoteCreateRequest(BaseModel):
     title: Optional[str] = Field("Untitled Note", max_length=150)
     note_type: str = Field("SOAP", pattern="^(SOAP|PROGRESS|DISCHARGE)$")
     patient_id: Optional[int] = None
+    encounter_date: Optional[datetime] = None
     idempotency_key: Optional[str] = Field(None, description="Unique key to prevent duplicate note creation.")
 
     @field_validator('raw_content')
@@ -40,6 +41,8 @@ class NoteResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    encounter_date: Optional[datetime] = None
+    ai_insights: Optional[Any] = None
 
 
     model_config = {"from_attributes": True}
@@ -49,3 +52,4 @@ class NoteUpdateRequest(BaseModel):
     structured_content: Optional[Any] = None
     status: Optional[str] = None # 'draft', 'finalized'
     patient_id: Optional[int] = None
+    encounter_date: Optional[datetime] = None

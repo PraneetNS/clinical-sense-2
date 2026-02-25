@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.exceptions import AppError, app_error_handler, general_exception_handler
 from .db.session import engine, SessionLocal
-from .api.endpoints import auth, notes, patients, clinical, tasks
+from .api.endpoints import auth, notes, patients, clinical, tasks, ai, copilot, hos, workflow, communication, hospital, encounter
 from .models import Base
 from .core.ratelimit import limiter
 from .core.config import Environment
@@ -77,6 +77,18 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    from .core.logging import logger
+    logger.info(f"Incoming Request: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Response Status: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Request Failed: {e}")
+        raise e
 
 # Limit payload size to 10MB
 class LimitUploadSize(BaseHTTPMiddleware):
@@ -178,6 +190,13 @@ app.include_router(patients.router, prefix=settings.API_V1_STR + "/patients", ta
 # Mount clinical endpoints at /patients to match hierarchy (e.g. /patients/{id}/admissions)
 app.include_router(clinical.router, prefix=settings.API_V1_STR + "/patients", tags=["clinical"])
 app.include_router(tasks.router, prefix=settings.API_V1_STR + "/tasks", tags=["tasks"])
+app.include_router(ai.router, prefix=settings.API_V1_STR + "/ai", tags=["ai"])
+app.include_router(hos.router, prefix=settings.API_V1_STR + "/hos", tags=["hospital-os"]) # HOS Router
+app.include_router(workflow.router, prefix=settings.API_V1_STR + "/workflow", tags=["clinical-workflow"]) # Workflow Engine
+app.include_router(communication.router, prefix=settings.API_V1_STR, tags=["communication"])
+app.include_router(hospital.router, prefix=settings.API_V1_STR, tags=["hospital"])
+app.include_router(copilot.router, tags=["copilot"])
+app.include_router(encounter.router, prefix=settings.API_V1_STR + "/ai", tags=["clinical-intelligence"])
 
 # Development entry point (only runs when executed directly, not when imported by gunicorn)
 if __name__ == "__main__":

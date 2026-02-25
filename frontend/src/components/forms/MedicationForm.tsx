@@ -14,8 +14,10 @@ export default function MedicationForm({ initialData, notes = [], onSubmit, onCa
         dosage: initialData?.dosage || '',
         frequency: initialData?.frequency || '',
         status: initialData?.status || 'Active',
-        start_date: initialData?.start_date ? new Date(initialData.start_date).toISOString().split('T')[0] : '',
-        end_date: initialData?.end_date ? new Date(initialData.end_date).toISOString().split('T')[0] : '',
+        start_date: initialData?.start_date && !isNaN(new Date(initialData.start_date).getTime())
+            ? new Date(initialData.start_date).toISOString().split('T')[0] : '',
+        end_date: initialData?.end_date && !isNaN(new Date(initialData.end_date).getTime())
+            ? new Date(initialData.end_date).toISOString().split('T')[0] : '',
         source_note_id: initialData?.source_note_id || ''
     });
 
@@ -73,11 +75,17 @@ export default function MedicationForm({ initialData, notes = [], onSubmit, onCa
                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                 >
                     <option value="">-- None --</option>
-                    {notes.map(note => (
-                        <option key={note.id} value={note.id}>
-                            {new Date(note.created_at).toLocaleDateString()} - {note.title}
-                        </option>
-                    ))}
+                    {notes.map(note => {
+                        const noteDate = note.timestamp || note.created_at;
+                        const displayDate = noteDate && !isNaN(new Date(noteDate).getTime())
+                            ? new Date(noteDate).toLocaleDateString()
+                            : 'Unknown Date';
+                        return (
+                            <option key={note.id} value={note.id}>
+                                {displayDate} - {note.title}
+                            </option>
+                        );
+                    })}
                 </select>
             </div>
             <div>

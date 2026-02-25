@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { patientsApi, clinicalApi } from '@/lib/api';
+import WorkflowDashboard from '@/components/WorkflowDashboard';
+import { patientsApi, clinicalApi, getErrorMessage } from '@/lib/api';
+import { workflowApi } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import PatientForm from '@/components/forms/PatientForm';
 import MedicationForm from '@/components/forms/MedicationForm';
@@ -20,14 +22,14 @@ import {
     ChevronLeft, User, Shield, AlertTriangle, Pill,
     ClipboardList, LayoutDashboard, FileText, CheckSquare,
     CreditCard, Stethoscope, AlertCircle, Clock, Plus, Edit2, Trash2, Calendar, Search, RefreshCw, TriangleAlert, Download,
-    ClipboardCheck, History as HistoryIcon
+    ClipboardCheck, History as HistoryIcon, Brain, Hospital
 } from 'lucide-react';
 
 export default function PatientDetailPage() {
     const { id } = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const { showToast } = useToast();
     const [patient, setPatient] = useState<any>(null);
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
@@ -56,6 +58,8 @@ export default function PatientDetailPage() {
     const [billingEndDate, setBillingEndDate] = useState('');
     const [report, setReport] = useState<any>(null);
     const [reportLoading, setReportLoading] = useState(false);
+    const [workflowDashboard, setWorkflowDashboard] = useState<any>(null);
+    const [isRecheckingDischarge, setIsRecheckingDischarge] = useState(false);
     const [timeline, setTimeline] = useState<any[]>([]);
 
     const isLocked = patient?.status === 'Closed' && user?.role !== 'admin';
@@ -141,8 +145,12 @@ export default function PatientDetailPage() {
                     setAdmissions(res.data);
                 } else if (activeTab === 'report') {
                     setReportLoading(true);
-                    const res = await patientsApi.getReport(id as string);
-                    setReport(res.data);
+                    const [rRes, wRes] = await Promise.all([
+                        patientsApi.getReport(id as string),
+                        workflowApi.getDashboard(id as string)
+                    ]);
+                    setReport(rRes.data);
+                    setWorkflowDashboard(wRes.data);
                     setReportLoading(false);
                 }
             } catch (err) {
@@ -172,10 +180,16 @@ export default function PatientDetailPage() {
         setModalType(null);
     };
 
-    const handleFormSubmit = async (data: any) => {
+    const handleFormSubmit = async (rawData: any) => {
         if (isSubmitting) return;
+        setIsSubmitting(true);
+        // Sanitize data: convert empty strings to null for ID fields
+        const data = Object.keys(rawData).reduce((acc: any, key) => {
+            acc[key] = rawData[key] === '' ? null : rawData[key];
+            return acc;
+        }, {});
+
         try {
-            setIsSubmitting(true);
             if (modalType === 'patient') {
                 const res = await patientsApi.update(id as string, data);
                 setPatient(res.data);
@@ -277,7 +291,7 @@ export default function PatientDetailPage() {
             setTimeline(resTimeline.data);
         } catch (err: any) {
             console.error("Failed to submit form", err);
-            showToast(err.response?.data?.detail || "Action failed", "error");
+            showToast(getErrorMessage(err) || "Action failed", "error");
         } finally {
             setIsSubmitting(false);
             closeModal();
@@ -435,10 +449,16 @@ export default function PatientDetailPage() {
                         <span>•</span>
                         <span>{patient.gender || 'Unknown'}</span>
                         <span>•</span>
-                        <span>{new Date(patient.date_of_birth).getFullYear() > 1900 ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'N/A'} yo</span>
+                        <span>{new Date(patient.date_of_birth).getFullYear() > 1900 ? (new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear()) + ' years old' : 'Age N/A'}</span>
                     </div>
                 </div>
                 <div className="ml-auto flex gap-3">
+                    <Link
+                        href={`/patients/${patient.id}/encounter`}
+                        className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white px-4 py-2 rounded-lg font-bold hover:opacity-90 transition-all shadow-md text-sm flex items-center gap-2"
+                    >
+                        <Brain size={16} /> Generate Full Encounter
+                    </Link>
                     <Link
                         href={`/notes/new?patientId=${patient.id}`} // Assuming we pass patientId via query param
                         className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-teal-700 transition-colors shadow-sm text-sm flex items-center gap-2"
@@ -468,6 +488,9 @@ export default function PatientDetailPage() {
                         );
                     })}
                 </div>
+
+                {/* Workflow Engine Dashboard */}
+                <WorkflowDashboard patientId={id as string} onViewTasks={() => handleTabChange('tasks')} />
 
                 {/* PATIENT SNAPSHOT (Phase 2) */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -622,7 +645,7 @@ export default function PatientDetailPage() {
                                                     <div>
                                                         <div className="font-black text-slate-900 text-base">{alg.allergen}</div>
                                                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                                                            {alg.severity} Severity • {alg.reaction}
+                                                            {alg.severity} Severity â€¢ {alg.reaction}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -677,6 +700,65 @@ export default function PatientDetailPage() {
                         </div>
                     )}
 
+                    {/* TIMELINE TAB */}
+                    {activeTab === 'timeline' && (
+                        <div className="space-y-6 max-w-5xl mx-auto">
+                            <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900">Patient Care Journey</h2>
+                                    <p className="text-xs text-slate-500 uppercase font-black tracking-[0.2em] mt-1">Chronological Medical History</p>
+                                </div>
+                            </div>
+
+                            {timeline.length === 0 ? (
+                                <EmptyState
+                                    icon={Clock}
+                                    title="Journey hasn't started"
+                                    description="No clinical events have been recorded for this patient yet."
+                                />
+                            ) : (
+                                <div className="space-y-4">
+                                    {timeline.map((event, i) => (
+                                        <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex gap-6 hover:shadow-md transition-shadow">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${event.type === 'note' ? 'bg-teal-50 text-teal-600' :
+                                                    event.type === 'admission' ? 'bg-blue-50 text-blue-600' :
+                                                        event.type === 'medication' ? 'bg-purple-50 text-purple-600' :
+                                                            event.type === 'procedure' ? 'bg-indigo-50 text-indigo-600' :
+                                                                'bg-slate-50 text-slate-600'
+                                                    }`}>
+                                                    {event.type === 'note' ? <FileText size={24} /> :
+                                                        event.type === 'admission' ? <Hospital size={24} /> :
+                                                            event.type === 'medication' ? <Pill size={24} /> :
+                                                                event.type === 'procedure' ? <Stethoscope size={24} /> :
+                                                                    <Clock size={24} />}
+                                                </div>
+                                                <div className="w-0.5 h-full bg-slate-100 min-h-[20px]"></div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                                                            {event.timestamp && !isNaN(new Date(event.timestamp).getTime())
+                                                                ? new Date(event.timestamp).toLocaleString()
+                                                                : 'Unknown Date'}
+                                                        </span>
+                                                        <h4 className="font-black text-slate-900 text-lg">{event.title}</h4>
+                                                    </div>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${event.status === 'Active' || event.status === 'Draft' || event.status === 'Admitted' ? 'bg-teal-50 text-teal-600 border border-teal-100' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                                        }`}>
+                                                        {event.status || event.type}
+                                                    </span>
+                                                </div>
+                                                <p className="text-slate-600 text-sm line-clamp-2 italic">{event.description}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* NOTES TAB */}
                     {activeTab === 'notes' && (
                         <div className="space-y-8 max-w-4xl mx-auto">
@@ -720,7 +802,11 @@ export default function PatientDetailPage() {
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="text-xs text-slate-400 font-medium">{new Date(note.created_at).toLocaleString()}</span>
+                                                        <span className="text-xs text-slate-400 font-medium">
+                                                            {note.timestamp && !isNaN(new Date(note.timestamp).getTime())
+                                                                ? new Date(note.timestamp).toLocaleString()
+                                                                : 'No Date Recorded'}
+                                                        </span>
                                                     </div>
 
                                                     <h4 className="text-lg font-bold text-slate-900 group-hover:text-teal-600 transition-colors mb-2">{note.title}</h4>
@@ -859,7 +945,11 @@ export default function PatientDetailPage() {
                                                             {proc.code || 'N/A'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-5 font-bold text-slate-600">{new Date(proc.date).toLocaleDateString()}</td>
+                                                    <td className="px-6 py-5 font-bold text-slate-600">
+                                                        {proc.date && !isNaN(new Date(proc.date).getTime())
+                                                            ? new Date(proc.date).toLocaleDateString()
+                                                            : 'Unknown Date'}
+                                                    </td>
                                                     <td className="px-8 py-5 text-right">
                                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <button onClick={() => openModal('procedure', proc)} className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"><Edit2 size={16} /></button>
@@ -928,7 +1018,7 @@ export default function PatientDetailPage() {
                                                 )}
 
                                                 <a
-                                                    href={doc.file_url.startsWith('http') ? doc.file_url : (process.env.NEXT_PUBLIC_API_URL || '').replace('/api/v1', '') + doc.file_url}
+                                                    href={(doc.file_url.startsWith('http') ? doc.file_url : (process.env.NEXT_PUBLIC_API_URL || '').replace('/api/v1', '') + doc.file_url) + (token ? `?token=${token}` : '')}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-center text-sm hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/10"
@@ -1011,7 +1101,7 @@ export default function PatientDetailPage() {
                                             />
                                         </div>
                                     </div>
-                                    <div className="mt-6 font-black text-slate-300">→</div>
+                                    <div className="mt-6 font-black text-slate-300">â†’</div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Service End</label>
                                         <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus-within:ring-2 focus-within:ring-teal-500 transition-all">
@@ -1064,7 +1154,10 @@ export default function PatientDetailPage() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {billing.filter(item => {
-                                            const date = new Date(item.created_at).toISOString().split('T')[0];
+                                            if (!item.created_at) return false;
+                                            const d = new Date(item.created_at);
+                                            if (isNaN(d.getTime())) return false;
+                                            const date = d.toISOString().split('T')[0];
                                             if (billingStartDate && date < billingStartDate) return false;
                                             if (billingEndDate && date > billingEndDate) return false;
                                             return true;
@@ -1080,16 +1173,25 @@ export default function PatientDetailPage() {
                                         ) : (
                                             billing
                                                 .filter(item => {
-                                                    const date = new Date(item.created_at).toISOString().split('T')[0];
+                                                    if (!item.created_at) return false;
+                                                    const d = new Date(item.created_at);
+                                                    if (isNaN(d.getTime())) return false;
+                                                    const date = d.toISOString().split('T')[0];
                                                     if (billingStartDate && date < billingStartDate) return false;
                                                     if (billingEndDate && date > billingEndDate) return false;
                                                     return true;
                                                 })
-                                                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                                .sort((a, b) => {
+                                                    const da = new Date(a.created_at).getTime();
+                                                    const db = new Date(b.created_at).getTime();
+                                                    return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+                                                })
                                                 .map((item, i) => (
                                                     <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
                                                         <td className="px-8 py-6 text-slate-500 font-bold whitespace-nowrap">
-                                                            {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            {item.created_at && !isNaN(new Date(item.created_at).getTime())
+                                                                ? new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                                                                : 'N/A'}
                                                         </td>
                                                         <td className="px-6 py-6 font-black text-slate-900 text-lg">{item.item_name}</td>
                                                         <td className="px-6 py-6">
@@ -1147,18 +1249,28 @@ export default function PatientDetailPage() {
                                 />
                             ) : (
                                 <div className="grid grid-cols-1 gap-6">
-                                    {admissions.sort((a, b) => new Date(b.admission_date).getTime() - new Date(a.admission_date).getTime()).map((stay, i) => (
+                                    {admissions.sort((a, b) => {
+                                        const da = new Date(a.admission_date).getTime();
+                                        const db = new Date(b.admission_date).getTime();
+                                        return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+                                    }).map((stay, i) => (
                                         <div key={i} className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
                                             <div className="flex justify-between items-start mb-6">
                                                 <div className="flex gap-4 items-center">
                                                     <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-black text-xl">
-                                                        {new Date(stay.admission_date).getDate()}
+                                                        {stay.admission_date && !isNaN(new Date(stay.admission_date).getTime()) ? new Date(stay.admission_date).getDate() : '?'}
                                                     </div>
                                                     <div>
                                                         <h4 className="text-xl font-black text-slate-900">{stay.reason}</h4>
                                                         <p className="text-slate-500 font-bold text-sm">
-                                                            {new Date(stay.admission_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
-                                                            {stay.discharge_date ? ` — ${new Date(stay.discharge_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}` : ' (Current)'}
+                                                            {stay.admission_date && !isNaN(new Date(stay.admission_date).getTime())
+                                                                ? new Date(stay.admission_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+                                                                : 'Unknown Date'}
+                                                            {stay.discharge_date
+                                                                ? (!isNaN(new Date(stay.discharge_date).getTime())
+                                                                    ? ` — ${new Date(stay.discharge_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`
+                                                                    : ' — Invalid Date')
+                                                                : ' (Current)'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1188,13 +1300,31 @@ export default function PatientDetailPage() {
                     {/* REPORT TAB */}
                     {activeTab === 'report' && (
                         <div className="space-y-8 max-w-5xl mx-auto">
+                            {/* Report Tab Header with Refresh */}
                             <div className="flex justify-between items-center bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
                                 <div>
                                     <h2 className="text-2xl font-black text-slate-900">Final Patient Summary</h2>
                                     <p className="text-xs text-slate-500 uppercase font-bold tracking-[0.2em] mt-2">Aggregated Clinical Documentation Report</p>
                                 </div>
                                 <div className="flex gap-4">
-
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                setReportLoading(true);
+                                                const res = await patientsApi.getReport(id as string);
+                                                setReport(res.data);
+                                                showToast("Report refreshed", "success");
+                                            } catch (err) {
+                                                console.error(err);
+                                                showToast("Refresh failed", "error");
+                                            } finally {
+                                                setReportLoading(false);
+                                            }
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 hover:text-slate-900 transition-all"
+                                    >
+                                        <RefreshCw size={18} className={reportLoading ? "animate-spin" : ""} /> Refresh Data
+                                    </button>
                                     <button
                                         onClick={handleDownloadReport}
                                         className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white font-black rounded-xl hover:bg-teal-700 shadow-xl shadow-teal-600/20 transition-all hover:-translate-y-0.5"
@@ -1209,18 +1339,108 @@ export default function PatientDetailPage() {
                                     <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-teal-600"></div>
                                     <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Assembling Report Data...</p>
                                 </div>
-                            ) : report && (
+                            ) : (report && (
                                 <div className="space-y-10 bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 min-h-screen relative overflow-hidden">
-                                    {/* Hospital Logo Style Header */}
-                                    <div className="flex justify-between items-start border-b-2 border-slate-50 pb-10">
+                                    {/* Report Header */}
+                                    <div className="flex justify-between items-start border-b-2 border-slate-50 pb-10 relative">
+                                        <div className="absolute top-0 right-1/2 translate-x-1/2 -mt-4">
+                                            <div className="bg-teal-600 text-white text-[10px] font-black uppercase tracking-[0.3em] px-4 py-1.5 rounded-full shadow-xl shadow-teal-600/20 flex items-center gap-2">
+                                                <Shield size={12} fill="white" /> Verified Clinical Record
+                                            </div>
+                                        </div>
                                         <div>
-                                            <div className="text-teal-600 font-black text-2xl tracking-tighter mb-1">CLINICAL DOC</div>
-                                            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Documentation Assistant</div>
+                                            <div className="text-slate-900 font-black text-3xl tracking-tighter mb-1">CLINICAL INTELLIGENCE</div>
+                                            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-teal-600">Automated Patient Summary Report</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-sm font-bold text-slate-900">Internal Medical Record</div>
-                                            <div className="text-xs text-slate-400 font-medium">Ref: {patient.mrn}</div>
+                                            <div className="text-sm font-bold text-slate-900">Record ID: REF-{patient.mrn}</div>
+                                            <div className="text-xs text-slate-400 font-medium">Class: Internal Medical Record</div>
                                             <div className="text-xs text-slate-400 font-medium">Generated: {new Date(report.generated_at).toLocaleString()}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Discharge Readiness Card */}
+                                    <div className="mb-12">
+                                        <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                                            <div className="flex justify-between items-start relative z-10">
+                                                <div>
+                                                    <h3 className="text-xs font-black uppercase tracking-[0.4em] text-teal-400 mb-2">Discharge Readiness</h3>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-6xl font-black tracking-tighter">
+                                                            {workflowDashboard?.discharge?.score || 0}%
+                                                        </div>
+                                                        <div className="h-12 w-[2px] bg-white/10"></div>
+                                                        <div>
+                                                            <div className={`text-xl font-bold ${workflowDashboard?.discharge?.score >= 80 ? 'text-teal-400' : 'text-amber-400'}`}>
+                                                                {workflowDashboard?.discharge?.score >= 80 ? 'Ready' : 'Pending'}
+                                                            </div>
+                                                            <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Clinical Disposition</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            setIsRecheckingDischarge(true);
+                                                            await workflowApi.checkDischarge(id as string);
+                                                            showToast("Re-check initiated. Please wait a moment...", "info");
+                                                            // Wait for AI to process then refresh
+                                                            setTimeout(async () => {
+                                                                const res = await workflowApi.getDashboard(id as string);
+                                                                setWorkflowDashboard(res.data);
+                                                                setIsRecheckingDischarge(false);
+                                                                showToast("Readiness updated", "success");
+                                                            }, 3000);
+                                                        } catch (err) {
+                                                            setIsRecheckingDischarge(false);
+                                                            showToast("Re-check failed", "error");
+                                                        }
+                                                    }}
+                                                    disabled={isRecheckingDischarge}
+                                                    className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 disabled:opacity-50 flex items-center gap-2"
+                                                >
+                                                    <RefreshCw size={14} className={isRecheckingDischarge ? 'animate-spin' : ''} />
+                                                    {isRecheckingDischarge ? 'Analyzing...' : 'Re-Check'}
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-12 mt-10 pt-10 border-t border-white/10 relative z-10">
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Unmet Requirements</div>
+                                                    <div className="space-y-3">
+                                                        {workflowDashboard?.discharge?.missing?.length > 0 ? (
+                                                            workflowDashboard.discharge.missing.slice(0, 3).map((m: string, i: number) => (
+                                                                <div key={i} className="flex items-start gap-3 text-sm font-medium">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0"></div>
+                                                                    {m}
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="flex items-center gap-3 text-teal-400 font-bold text-sm">
+                                                                <ClipboardCheck size={18} /> All clinical requirements met
+                                                            </div>
+                                                        )}
+                                                        {workflowDashboard?.discharge?.missing?.length > 3 && (
+                                                            <div className="text-[10px] font-black uppercase tracking-widest text-white/20 pl-4">
+                                                                + {workflowDashboard.discharge.missing.length - 3} more requirements
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Target Disposition</div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
+                                                            <Calendar className="text-teal-400" size={24} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-xl font-black">{workflowDashboard?.discharge?.target || 'TBD'}</div>
+                                                            <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Estimated Date</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1236,7 +1456,7 @@ export default function PatientDetailPage() {
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Date of Birth</label>
-                                                <div className="text-slate-900 font-bold">{new Date(patient.date_of_birth).toLocaleDateString()}</div>
+                                                <div className="text-slate-900 font-bold">{patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A'}</div>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Gender</label>
@@ -1249,8 +1469,39 @@ export default function PatientDetailPage() {
                                         </div>
                                     </section>
 
-                                    {/* Clinical Sections */}
+                                    {/* Summary & Analysis Section */}
+                                    {report.summary && (
+                                        <section className="relative">
+                                            <div className="absolute -left-4 top-10 text-6xl text-purple-100 font-serif opacity-50">&ldquo;</div>
+                                            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-purple-600 mb-6 flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-purple-500"></div> Executive Clinical Synthesis
+                                            </h3>
+                                            <div className="bg-purple-50/30 p-8 rounded-[2rem] border border-purple-100 text-slate-700 text-base leading-relaxed whitespace-pre-wrap relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-100/20 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                                                <span className="relative z-10">{typeof report.summary === 'string' ? report.summary : (report.summary?.summary || JSON.stringify(report.summary))}</span>
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    {/* Medical History & Allergies */}
                                     <div className="grid grid-cols-2 gap-12">
+                                        <section>
+                                            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600 mb-6 flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-indigo-500"></div> Medical History
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {patient.medical_history?.length > 0 ? patient.medical_history.map((h: any, i: number) => (
+                                                    <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-slate-800 text-sm">{h.condition_name}</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Diagnosed: {h.diagnosis_date ? new Date(h.diagnosis_date).toLocaleDateString() : 'Historical'}</span>
+                                                        </div>
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${h.status === 'Active' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{h.status}</span>
+                                                    </div>
+                                                )) : <p className="text-slate-400 italic text-sm">No documented medical history.</p>}
+                                            </div>
+                                        </section>
+
                                         <section>
                                             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-orange-600 mb-6 flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-orange-500"></div> Allergies & Severity
@@ -1264,22 +1515,207 @@ export default function PatientDetailPage() {
                                                 )) : <p className="text-slate-400 italic text-sm">No documented allergies.</p>}
                                             </div>
                                         </section>
+                                    </div>
 
+                                    {/* Medications */}
+                                    <div className="grid grid-cols-1 gap-12">
                                         <section>
                                             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-600 mb-6 flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full bg-blue-500"></div> Active Medications
+                                                <div className="w-2 h-2 rounded-full bg-blue-500"></div> Active Medications & Pharmacological Therapy
                                             </h3>
-                                            <div className="space-y-3">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {patient.medications?.filter((m: any) => m.status === 'Active').length > 0 ?
                                                     patient.medications.filter((m: any) => m.status === 'Active').map((m: any, i: number) => (
-                                                        <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                            <div className="font-bold text-slate-800">{m.name}</div>
-                                                            <div className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">{m.dosage} • {m.frequency}</div>
+                                                        <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                                            <div>
+                                                                <div className="font-bold text-slate-800">{m.name}</div>
+                                                                <div className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">{m.dosage} • {m.frequency}</div>
+                                                            </div>
+                                                            <div className="bg-blue-100/50 text-blue-600 text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">Active</div>
                                                         </div>
                                                     )) : <p className="text-slate-400 italic text-sm">No active medications.</p>}
                                             </div>
                                         </section>
                                     </div>
+
+                                    {/* Plan of Care / Tasks */}
+                                    <section>
+                                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600 mb-6 flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Plan of Care & Tasks
+                                        </h3>
+                                        {report.tasks && report.tasks.filter((t: any) => t.status !== 'Completed').length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {report.tasks.filter((t: any) => t.status !== 'Completed').map((task: any, i: number) => (
+                                                    <div key={i} className="flex gap-4 p-4 bg-emerald-50/30 rounded-2xl border border-emerald-100">
+                                                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                                            <CheckSquare size={14} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-slate-900 text-sm">{task.description}</div>
+                                                            <div className="text-xs text-slate-500 mt-1">Due: {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'ASAP'} • Priority: {task.priority}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-slate-400 italic text-sm">No pending tasks or care plan items.</p>
+                                        )}
+                                    </section>
+
+                                    {/* Recent Documents */}
+                                    <section>
+                                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-cyan-600 mb-6 flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-cyan-500"></div> Recent Documents & Results
+                                        </h3>
+                                        {report.documents && report.documents.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                {report.documents.slice(0, 3).map((doc: any, i: number) => (
+                                                    <div key={i} className="p-4 bg-cyan-50/30 rounded-2xl border border-cyan-100">
+                                                        <div className="font-bold text-slate-900 text-sm truncate">{doc.title}</div>
+                                                        <div className="text-xs text-slate-500 mt-1">{doc.file_type} • {new Date(doc.created_at).toLocaleDateString()}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-slate-400 italic text-sm">No recent documents attached.</p>
+                                        )}
+                                    </section>
+
+
+                                    {/* Intelligence & Communication */}
+                                    <div className="grid grid-cols-2 gap-12">
+                                        {/* Readmission Risk */}
+                                        {report.risks && report.risks.length > 0 && (
+                                            <section>
+                                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-red-600 mb-6 flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full bg-red-500"></div> Readmission Risk
+                                                </h3>
+                                                <div className="bg-red-50/50 p-6 rounded-3xl border border-red-100">
+                                                    <div className="flex justify-between items-center mb-4">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Current Risk</span>
+                                                        <span className="px-3 py-1 rounded-full bg-red-100 text-red-700 font-black text-xs uppercase">{report.risks[0].risk_level}</span>
+                                                    </div>
+                                                    <div className="text-4xl font-black text-slate-900 mb-2">{report.risks[0].risk_score}%</div>
+                                                    {report.risks[0].contributing_factors && (
+                                                        <div className="text-xs text-slate-500 italic mt-2">
+                                                            Factors: {report.risks[0].contributing_factors}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </section>
+                                        )}
+
+                                        {/* Patient Communication */}
+                                        {report.communications && report.communications.length > 0 && (
+                                            <section>
+                                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-purple-600 mb-6 flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full bg-purple-500"></div> Latest Patient Summary
+                                                </h3>
+                                                <div className="bg-purple-50/50 p-6 rounded-3xl border border-purple-100">
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-purple-400 mb-2">Simpified Diagnosis</div>
+                                                    <div className="font-bold text-slate-800 text-sm mb-4">{report.communications[0].simplified_diagnosis}</div>
+
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-purple-400 mb-2">Warning Signs</div>
+                                                    <div className="text-xs text-slate-600">{report.communications[0].warning_signs}</div>
+                                                </div>
+                                            </section>
+                                        )}
+                                    </div>
+
+                                    {/* AI Generated Content / Encounters */}
+                                    {report.encounters && report.encounters.length > 0 && (
+                                        <section>
+                                            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-teal-600 mb-6 flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></div> AI Clinical Intelligence (Draft Encounters)
+                                            </h3>
+                                            <div className="space-y-6">
+                                                {report.encounters.map((enc: any, i: number) => (
+                                                    <div key={i} className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                                                            <Brain size={120} />
+                                                        </div>
+                                                        <div className="relative z-10">
+                                                            <div className="flex justify-between items-start mb-6">
+                                                                <div>
+                                                                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-teal-400 mb-2">
+                                                                        Automated Synthesis • {enc.created_at && !isNaN(new Date(enc.created_at).getTime()) ? new Date(enc.created_at).toLocaleDateString() : 'Date Unknown'}
+                                                                    </div>
+                                                                    <h4 className="text-2xl font-black tracking-tight">{enc.chief_complaint}</h4>
+                                                                </div>
+                                                                <div className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${enc.is_confirmed ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                                                                    {enc.is_confirmed ? 'Confirmed Record' : 'Draft Intel'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid grid-cols-3 gap-8 text-sm">
+                                                                <div>
+                                                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">SOAP Assessment</div>
+                                                                    <p className="text-slate-300 leading-relaxed line-clamp-3 italic">
+                                                                        &quot;{enc.soap?.assessment || 'No assessment provided.'}&quot;
+                                                                    </p>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Extracted Meds</div>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {enc.medications?.map((m: any, idx: number) => (
+                                                                            <span key={idx} className="bg-white/5 px-2 py-1 rounded text-[10px] font-bold border border-white/10">{m.name}</span>
+                                                                        ))}
+                                                                        {(!enc.medications || enc.medications.length === 0) && <span className="text-slate-500 italic">None detected</span>}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Risk & Legal</div>
+                                                                    <div className="space-y-1">
+                                                                        {enc.risk_flags?.slice(0, 2).map((f: string, idx: number) => (
+                                                                            <div key={idx} className="flex items-center gap-2 text-rose-400 text-[10px] font-bold">
+                                                                                <AlertTriangle size={10} /> {f}
+                                                                            </div>
+                                                                        ))}
+                                                                        {enc.risk_score === 'High' && <div className="text-rose-500 text-[10px] font-black uppercase tracking-widest mt-2">Critical Follow-up Required</div>}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center">
+                                                                <Link
+                                                                    href={`/patients/${id}/encounter?id=${enc.encounter_id}`}
+                                                                    className="text-teal-400 font-bold text-xs hover:text-teal-300 transition-colors flex items-center gap-2"
+                                                                >
+                                                                    View Detailed AI Workspace <Plus size={14} />
+                                                                </Link>
+                                                                {enc.is_confirmed && <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em]">Integrated to EHR</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    {/* Handovers */}
+                                    {report.handovers && report.handovers.length > 0 && (
+                                        <section>
+                                            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-600 mb-6 flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-slate-500"></div> Recent Shift Handovers
+                                            </h3>
+                                            <div className="grid grid-cols-1 gap-4">
+                                                {report.handovers.slice(0, 3).map((h: any, i: number) => (
+                                                    <div key={i} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                                        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center font-black text-xs text-slate-400 border border-slate-100">
+                                                            {h.shift_type === 'Day' ? '☀️' : '🌙'}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                                                {h.shift_type} Shift Handover
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    {h.created_at && !isNaN(new Date(h.created_at).getTime()) ? new Date(h.created_at).toLocaleDateString() : 'Date Unknown'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-xs text-slate-500 line-clamp-2 mt-1">{typeof h.content === 'string' ? h.content : JSON.stringify(h.content)}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    )}
 
                                     <section>
                                         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600 mb-6 flex items-center gap-2">
@@ -1323,7 +1759,7 @@ export default function PatientDetailPage() {
                                         </div>
                                     </section>
 
-                                    <section className="pb-20">
+                                    <section className="pb-8">
                                         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900 mb-6 flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-slate-900"></div> Provider Documentation
                                         </h3>
@@ -1332,7 +1768,13 @@ export default function PatientDetailPage() {
                                                 <div key={i} className="pl-6 border-l-2 border-slate-100">
                                                     <div className="flex justify-between items-center mb-2">
                                                         <div className="font-bold text-slate-900">{n.title}</div>
-                                                        <div className="text-[10px] text-slate-400 font-medium">{new Date(n.created_at).toLocaleDateString()}</div>
+                                                        <div className="text-[10px] text-slate-400 font-medium">
+                                                            {n.encounter_date || n.created_at ? (
+                                                                !isNaN(new Date(n.encounter_date || n.created_at).getTime())
+                                                                    ? new Date(n.encounter_date || n.created_at).toLocaleDateString()
+                                                                    : 'Date Unknown'
+                                                            ) : 'Date Unknown'}
+                                                        </div>
                                                     </div>
                                                     <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-wrap line-clamp-4 italic">
                                                         &quot;{n.raw_content}&quot;
@@ -1342,14 +1784,38 @@ export default function PatientDetailPage() {
                                         </div>
                                     </section>
 
+                                    {/* Authorization & Signature Section */}
+                                    <section className="mt-20 pt-12 border-t-2 border-slate-50">
+                                        <div className="flex justify-between items-end">
+                                            <div className="space-y-6">
+                                                <div className="space-y-1">
+                                                    <div className="w-64 h-px bg-slate-200"></div>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Authorization Signature</label>
+                                                </div>
+                                                <div>
+                                                    <div className="text-lg font-black text-slate-900 uppercase">Dr. {user?.full_name || 'Attending Physician'}</div>
+                                                    <div className="text-xs text-slate-400 font-bold uppercase tracking-tighter">Authorized Clinical Representative</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right flex flex-col items-end gap-2">
+                                                <div className="w-24 h-24 rounded-3xl border-4 border-teal-50 flex flex-col items-center justify-center p-2 opacity-50 grayscale hover:grayscale-0 transition-all cursor-crosshair">
+                                                    <Brain size={40} className="text-teal-600 mb-1" />
+                                                    <div className="text-[8px] font-black text-teal-600 uppercase tracking-tighter leading-none text-center">AI Verified<br />Encryption</div>
+                                                </div>
+                                                <div className="text-[10px] font-black text-slate-900">{new Date(report.generated_at).toLocaleDateString()}</div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date of Authorization</div>
+                                            </div>
+                                        </div>
+                                    </section>
+
                                     {/* Report Footer */}
-                                    <div className="absolute bottom-8 left-12 right-12 flex justify-between items-center text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">
-                                        <div>AI-Assisted Documentation System</div>
-                                        <div>Confidential Patient Record • NO MEDICAL ADVICE</div>
+                                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-[0.2em] text-slate-300 mt-12 pt-8 border-t border-slate-50">
+                                        <div>AI-Assisted Documentation System v2.1.0</div>
+                                        <div>Confidential Clinical Record • HIGH PRIVACY</div>
                                         <div>Page 01 of 01</div>
                                     </div>
                                 </div>
-                            )}
+                            ))}
                         </div>
                     )}
                 </div>

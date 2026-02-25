@@ -67,11 +67,27 @@ class PatientResponse(PatientBase):
 
     model_config = {"from_attributes": True}
 
+from .hospital import (
+    PatientCommunicationResponse,
+    SecureMessageResponse,
+    ShiftHandoverResponse,
+    ReadmissionRiskResponse
+)
+
+from .encounter import EncounterResponse
+
 class PatientReport(BaseModel):
     patient: PatientResponse
     notes: List[NoteResponse]
     tasks: List[TaskResponse] = []
     documents: List[DocumentResponse] = []
     timeline: List[Any] = []
+    encounters: List[EncounterResponse] = []
     summary: Optional[str] = None
+    messages: List[SecureMessageResponse] = []
+    communications: List[PatientCommunicationResponse] = []
+    handovers: List[ShiftHandoverResponse] = []
+    risks: List[ReadmissionRiskResponse] = []
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {"from_attributes": True}
