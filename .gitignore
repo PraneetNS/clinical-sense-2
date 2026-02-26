@@ -1,35 +1,104 @@
-# Node dependencies
-node_modules/
-.next/
-out/
-build/
+# ========================
+# ClinicalSense .gitignore
+# ========================
 
-# Python dependencies
-__pycache__/
-*.py[cod]
-*$py.class
+# ---- Dependencies ----
+node_modules/
 .venv/
 venv/
 ENV/
 env/
+
+# ---- Build Output ----
+.next/
+out/
+build/
+dist/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ---- Environment / Secrets ----
 .env
 .env.local
 .env.production
+.env.staging
+*.env
+backend/.env
+frontend/.env.local
 
-# Databases
+# ---- Firebase / Credentials ----
+*firebase-adminsdk*.json
+service_account.json
+backend/service_account.json
+**/service_account*.json
+*.pem
+*.key
+
+# ---- Databases ----
 *.db
 *.sqlite3
 
-# OS files
+# ---- OS Files ----
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
+# ---- Logs & Debug Output ----
 *.log
+*.txt
+!README*.txt
+!requirements.txt
+!pinned_requirements.txt
+backend/backend_errors.log
+backend/seed_error.log
 frontend/lint.txt
 frontend/lint-output.txt
+frontend/lint_output.txt
+frontend/lint_results.txt
+frontend/eslint_out.txt
+frontend/build_log*.txt
+frontend/server_log.txt
 
-# Temp / Uploads
+# ---- Test / Debug Scripts (root level) ----
+add_doc_summary_column.py
+add_med_column.py
+add_proc_columns.py
+check_db.py
+check_schema.py
+get_credentials.py
+migrate_idempotency.py
+migrate_phase1.py
+seed_user.py
+test_groq_diag.py
+test_groq_simple.py
+
+# ---- Backend Test / Debug Scripts ----
+backend/check_db_cols.py
+backend/test_cors.py
+backend/test_firebase.py
+backend/test_groq_diag.py
+backend/test_groq_simple.py
+backend/debug_cors.py
+backend/debug_login.py
+backend/get_credentials.py
+backend/migrate_idempotency.py
+backend/migrate_phase1.py
+backend/seed_user.py
+
+# ---- Cache ----
+.pytest_cache/
+backend/.pytest_cache/
+*.pytest_cache
+
+# ---- Temp / Uploads ----
 uploads/
 backend/uploads/
-backend/*firebase-adminsdk*.json
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

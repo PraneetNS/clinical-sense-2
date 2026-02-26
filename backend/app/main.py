@@ -57,6 +57,7 @@ app = FastAPI(
 # Rate Limiting Setup
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(SlowAPIMiddleware)
 
 # Security Headers Middleware
@@ -101,6 +102,16 @@ class LimitUploadSize(BaseHTTPMiddleware):
 
 app.add_middleware(LimitUploadSize)
 
+# CORS - MUST be the LAST middleware added (Starlette executes in reverse order,
+# so last-added = outermost wrapper = CORS headers on ALL responses including errors)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Exception Handlers
 @app.exception_handler(AppError)
 async def app_error_exception_handler(request, exc):
@@ -116,14 +127,7 @@ async def universal_exception_handler(request, exc):
     logger.error(f"Unhandled Exception: {str(exc)}")
     return await general_exception_handler(request, exc)
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 
 @app.get("/api/health")
 def health_check_general():

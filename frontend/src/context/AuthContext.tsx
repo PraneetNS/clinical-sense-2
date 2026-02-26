@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setToken(null);
                 setUser(null);
                 localStorage.removeItem('token');
-                if (pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/public')) {
+                if (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/public')) {
                     router.push('/login');
                 }
             }

@@ -1,10 +1,4 @@
-# Node dependencies
-node_modules/
-.next/
-out/
-build/
-
-# Python dependencies
+# ---- Dependencies ----
 __pycache__/
 *.py[cod]
 *$py.class
@@ -12,25 +6,53 @@ __pycache__/
 venv/
 ENV/
 env/
+
+# ---- Environment / Secrets ----
 .env
 .env.local
 .env.production
+
+# ---- Firebase / Credentials ----
 service_account.json
-.*json
-# Databases
+*firebase-adminsdk*.json
+**/service_account*.json
+*.pem
+*.key
+
+# ---- Databases ----
 *.db
 *.sqlite3
 
-# OS files
+# ---- OS Files ----
 .DS_Store
 Thumbs.db
 
-# Logs
+# ---- Logs & Debug Output ----
 *.log
-frontend/lint.txt
-frontend/lint-output.txt
+backend_errors.log
+seed_error.log
+alembic_error.txt
+alembic_test.txt
+db_test.txt
+error.txt
+error_new.txt
+diag_output*.txt
 
-# Temp / Uploads
+# ---- Test / Debug Scripts ----
+check_db_cols.py
+test_cors.py
+test_firebase.py
+test_groq_diag.py
+test_groq_simple.py
+debug_cors.py
+debug_login.py
+get_credentials.py
+migrate_idempotency.py
+migrate_phase1.py
+seed_user.py
+
+# ---- Cache ----
+.pytest_cache/
+
+# ---- Uploads ----
 uploads/
-backend/uploads/
-backend/*firebase-adminsdk*.json
