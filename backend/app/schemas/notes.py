@@ -31,6 +31,18 @@ class NoteCreateRequest(BaseModel):
             raise ValueError('Clinical notes cannot be empty or only whitespace.')
         return v
 
+# --- AI / Insight Schemas ---
+class ClinicalAIInsightResponse(BaseModel):
+    id: int
+    note_id: int
+    risk_score: Optional[str] = None
+    red_flags: Optional[Any] = None
+    suggestions: Optional[Any] = None
+    missing_info: Optional[Any] = None
+    created_at: datetime
+    
+    model_config = {"from_attributes": True}
+
 class NoteResponse(BaseModel):
     id: int
     title: Optional[str]
@@ -42,8 +54,7 @@ class NoteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     encounter_date: Optional[datetime] = None
-    ai_insights: Optional[Any] = None
-
+    ai_insights: Optional[ClinicalAIInsightResponse] = None
 
     model_config = {"from_attributes": True}
 

@@ -205,4 +205,4 @@ app.include_router(encounter.router, prefix=settings.API_V1_STR + "/ai", tags=["
 # Development entry point (only runs when executed directly, not when imported by gunicorn)
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8080, reload=True)
