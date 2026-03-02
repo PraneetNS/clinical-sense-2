@@ -491,10 +491,86 @@ Return ONLY valid JSON. No commentary. No markdown.
 }}
 """
 
+QUALITY_EVALUATOR_PROMPT = f"""
+You are an AI Quality & Governance Evaluator. Your task is to review the output of an AI clinical encounter extraction for accuracy, hallucination, and compliance.
+
+{SAFETY_Directives}
+
+INPUT:
+1. Raw clinical note
+2. Structured AI output (JSON)
+
+OUTPUT JSON FORMAT:
+{{
+  "confidence_score": 0.0-1.0,
+  "compliance_score": 0.0-1.0,
+  "billing_accuracy_score": 0.0-1.0 or null,
+  "hallucination_flags": ["list of identified hallucinations or 'none'"],
+  "missing_critical_fields": ["list of fields mentioned in note but missing in JSON"],
+  "risk_level": "LOW|MEDIUM|HIGH",
+  "reasoning": "string"
+}}
+"""
+
 # Inject intelligence prompts into the main PROMPTS dict
 PROMPTS["ENCOUNTER_EXTRACTOR"] = ENCOUNTER_EXTRACTOR_PROMPT
 PROMPTS["MEDICATION_STRUCTURING"] = MEDICATION_STRUCTURING_PROMPT
 PROMPTS["DIAGNOSIS_CODING"] = DIAGNOSIS_CODING_PROMPT
 PROMPTS["BILLING_INTELLIGENCE"] = BILLING_INTELLIGENCE_PROMPT
-PROMPTS["CASE_INTELLIGENCE"] = CASE_INTELLIGENCE_PROMPT
+PROMPTS["QUALITY_EVALUATOR"] = QUALITY_EVALUATOR_PROMPT
+
+CLINICAL_EXPLAINER_PROMPT = """
+You are a Clinical Explainability Expert. Review the structured findings and patient context to provide logical rationales and source evidence.
+
+INPUT:
+{note_data}
+
+OUTPUT JSON:
+{
+  "diagnosis_rationale": [
+    {"condition": "string", "evidence": "string", "source_snippet": "exact quote from SOAP"}
+  ],
+  "billing_rationale": [
+    {"code": "string", "reason": "why this complexity was chosen"}
+  ],
+  "risk_rationale": [
+    {"risk": "string", "rationale": "clinical justification"}
+  ],
+  "source_references": ["list of key supporting phrases from the original note"]
+}
+"""
+
+DIFFERENTIAL_ASSISTANT_PROMPT = """
+You are a Clinical Diagnostic Assistant. Suggest alternative differential diagnoses for clinician consideration.
+
+INPUT:
+SOAP: {soap}
+Context: {patient_context}
+
+OUTPUT JSON:
+{
+  "possible_differentials": [
+    {"condition": "string", "confidence": 0.0-1.0, "reason": "string"}
+  ]
+}
+"""
+
+SBAR_HANDOFF_PROMPT = """
+You are a Clinical Handoff Specialist. Generate a structured SBAR summary based on the provided SOAP note.
+
+INPUT:
+SOAP: {soap}
+
+OUTPUT JSON:
+{
+  "situation": "Concise summary of current situation",
+  "background": "Relevant clinical background",
+  "assessment": "Assessment of current state",
+  "recommendation": "Recommendations for next steps"
+}
+"""
+
+PROMPTS["CLINICAL_EXPLAINER"] = CLINICAL_EXPLAINER_PROMPT
+PROMPTS["DIFFERENTIAL_ASSISTANT"] = DIFFERENTIAL_ASSISTANT_PROMPT
+PROMPTS["SBAR_HANDOFF"] = SBAR_HANDOFF_PROMPT
 

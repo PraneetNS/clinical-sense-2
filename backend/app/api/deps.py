@@ -7,9 +7,12 @@ from .. import models
 from ..core.logging import user_id_contextvar
 import firebase_admin
 from firebase_admin import auth
-from typing import Optional
+from typing import Optional, List
 
 security = HTTPBearer()
+
+# Canonical RBAC roles
+VALID_ROLES = {"DOCTOR", "NURSE", "BILLING_ADMIN", "READ_ONLY_AUDITOR", "SUPER_ADMIN"}
 
 def verify_token_and_get_user(db: Session, token_str: str) -> models.User:
     credentials_exception = HTTPException(
@@ -44,7 +47,7 @@ def verify_token_and_get_user(db: Session, token_str: str) -> models.User:
             firebase_uid=firebase_uid,
             full_name=decoded_token.get("name", email.split('@')[0]),
             is_active=True,
-            role="doctor" # Default role
+            role="DOCTOR"  # Default role — canonical RBAC value
         )
         db.add(user)
         db.commit()
@@ -73,6 +76,7 @@ def get_current_user_from_token(
     return verify_token_and_get_user(db, token)
 
 def check_role(roles: list[str]):
+    """Legacy helper — prefer require_role() for new endpoints."""
     def role_checker(current_user: models.User = Depends(get_current_user)):
         if current_user.role not in roles:
             raise HTTPException(
@@ -81,3 +85,28 @@ def check_role(roles: list[str]):
             )
         return current_user
     return role_checker
+
+def require_role(allowed_roles: List[str]):
+    """
+    Server-side RBAC dependency factory.
+
+    Usage:
+        @router.get("/admin/...")
+        async def endpoint(user = Depends(require_role(["SUPER_ADMIN"]))):
+            ...
+    """
+    def _dependency(
+        db: Session = Depends(get_db),
+        token: HTTPAuthorizationCredentials = Depends(security),
+    ) -> models.User:
+        user = verify_token_and_get_user(db, token.credentials)
+        # Normalise — support legacy lowercase roles
+        user_role_upper = (user.role or "").upper()
+        allowed_upper = [r.upper() for r in allowed_roles]
+        if user_role_upper not in allowed_upper:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required role(s): {', '.join(allowed_roles)}",
+            )
+        return user
+    return _dependency

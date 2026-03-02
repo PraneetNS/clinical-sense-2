@@ -1,7 +1,10 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, MetaData, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, MetaData, UniqueConstraint, CheckConstraint, Index
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
+import uuid
 
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
@@ -20,7 +23,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     firebase_uid = Column(String, unique=True, index=True, nullable=True)
     full_name = Column(String, nullable=True)
-    role = Column(String, default="doctor") # 'doctor', 'assistant', 'admin'
+    role = Column(String, default="DOCTOR", index=True)  # DOCTOR | NURSE | BILLING_ADMIN | READ_ONLY_AUDITOR | SUPER_ADMIN
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
@@ -519,6 +522,10 @@ class AIEncounter(Base):
     # Token usage telemetry (JSON)
     token_usage = Column(Text, nullable=True)
 
+    # Observability — added safely as nullable
+    model_version = Column(String(100), nullable=True)
+    processing_latency_ms = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -533,6 +540,8 @@ class AIEncounter(Base):
     billing_items = relationship("AIGeneratedBilling", back_populates="encounter", cascade="all, delete-orphan")
     timeline_events = relationship("AITimelineEvent", back_populates="encounter", cascade="all, delete-orphan")
     followups = relationship("AIFollowupRecommendation", back_populates="encounter", cascade="all, delete-orphan")
+    quality_report = relationship("AIQualityReport", uselist=False, back_populates="encounter", cascade="all, delete-orphan")
+    usage_metrics = relationship("AIUsageMetrics", uselist=False, back_populates="encounter", cascade="all, delete-orphan")
 
 
 class AIGeneratedMedication(Base):
@@ -695,3 +704,71 @@ class AIFollowupRecommendation(Base):
     encounter = relationship("AIEncounter", back_populates="followups")
     patient = relationship("Patient")
     converted_task = relationship("Task")
+
+
+# =========================================================
+# AI GOVERNANCE & OBSERVABILITY MODELS
+# =========================================================
+
+class AIQualityReport(Base):
+    """Governance quality evaluation for an AI encounter."""
+    __tablename__ = "ai_quality_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Scores (0.0 – 1.0)
+    confidence_score = Column(Float, nullable=False, default=0.0)
+    compliance_score = Column(Float, nullable=False, default=0.0)
+    billing_accuracy_score = Column(Float, nullable=True)
+
+    # JSONB fields for rich flag storage
+    hallucination_flags = Column(JSONB, nullable=True)
+    missing_critical_fields = Column(JSONB, nullable=True)
+    clinical_safety_flags = Column(JSONB, nullable=True)   # output of clinical_rules engine
+
+    risk_level = Column(String(20), nullable=False, default="HIGH")
+    model_version = Column(String(100), nullable=True)
+
+    # Clinical Sense v2: Deterministic + Explainable Extensions (JSONB)
+    rationale_json = Column(JSONB, nullable=True)
+    drug_safety_flags = Column(JSONB, nullable=True)
+    structured_risk_metrics = Column(JSONB, nullable=True)
+    guideline_flags = Column(JSONB, nullable=True)
+    differential_output = Column(JSONB, nullable=True)
+    lab_interpretation = Column(JSONB, nullable=True)
+    handoff_sbar = Column(JSONB, nullable=True)
+    
+    # Feature Toggles
+    evidence_mode_enabled = Column(Boolean, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        CheckConstraint("risk_level IN ('LOW','MEDIUM','HIGH')", name="ck_quality_risk_level"),
+    )
+
+    encounter = relationship("AIEncounter", back_populates="quality_report")
+
+
+class AIUsageMetrics(Base):
+    """Per-encounter AI usage metrics for observability and admin analytics."""
+    __tablename__ = "ai_usage_metrics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    tokens_used = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    accepted_without_edit = Column(Boolean, default=False)
+    edit_distance_score = Column(Float, nullable=True)   # 0.0 = no edits, 1.0 = fully rewritten
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        Index('ix_ai_usage_metrics_user_created', 'user_id', 'created_at'),
+    )
+
+    encounter = relationship("AIEncounter", back_populates="usage_metrics")
+    user = relationship("User")

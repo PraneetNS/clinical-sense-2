@@ -123,10 +123,11 @@ export const workflowApi = {
 };
 
 export const encounterApi = {
-    generate: (data: { patient_id: number; raw_note: string; encounter_date?: string }) =>
+    generate: (data: { patient_id: number; raw_note: string; encounter_date?: string; evidence_mode_enabled?: boolean }) =>
         api.post('/ai/generate_full_encounter', data),
     list: (patientId: string | number) => api.get(`/ai/encounters/${patientId}`),
     get: (encounterId: string | number) => api.get(`/ai/encounter/${encounterId}`),
+    getQualityReport: (encounterId: string | number) => api.get(`/ai/encounter/${encounterId}/quality-report`),
     confirm: (encounterId: string | number) => api.post(`/ai/encounter/${encounterId}/confirm`),
     wsUrl: (encounterId: string | number): string => {
         const base = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1')
@@ -134,6 +135,11 @@ export const encounterApi = {
             .replace('https://', 'wss://');
         return `${base}/ai/encounter/ws/${encounterId}`;
     },
+};
+
+export const adminApi = {
+    getAnalytics: () => api.get('/admin/ai-analytics'),
+    getBiasReport: () => api.get('/admin/bias-report'),
 };
 
 export const authApi = {

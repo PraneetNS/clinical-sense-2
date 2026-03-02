@@ -10,7 +10,8 @@ import {
     ChevronLeft, Brain, Zap, CheckCircle, AlertTriangle, Clock,
     Pill, Stethoscope, CreditCard, Calendar, Shield,
     Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle,
-    CheckSquare, FileText, Activity
+    CheckSquare, FileText, Activity, Link2, BookOpen, Microscope,
+    Repeat, BrainCircuit, Lock, ExternalLink
 } from 'lucide-react';
 
 /* ─────────────────── Types ─────────────────── */
@@ -20,6 +21,22 @@ interface Procedure { id: number; name: string; code?: string; notes?: string; c
 interface BillingItem { id: number; cpt_code?: string; description: string; estimated_cost?: number; complexity: string; confidence: number; requires_review: boolean; review_reason?: string; }
 interface TimelineEvent { id: number; event_type: string; event_description: string; event_date_text?: string; severity: string; }
 interface Followup { id: number; recommendation: string; follow_up_type?: string; urgency: string; suggested_days?: number; }
+interface QualityReport {
+    confidence_score: number;
+    compliance_score: number;
+    risk_level: string;
+    evidence_mode_enabled: boolean;
+    rationale_json: any;
+    drug_safety_flags: any;
+    structured_risk_metrics: any;
+    guideline_flags: any;
+    differential_output: any;
+    lab_interpretation: any;
+    handoff_sbar: any;
+    clinical_safety_flags: any;
+    hallucination_flags: string[];
+    missing_critical_fields: string[];
+}
 interface Encounter {
     encounter_id: number; patient_id: number; status: string; is_confirmed: boolean;
     encounter_date: string; chief_complaint: string;
@@ -92,6 +109,8 @@ export default function EncounterGeneratorPage() {
     const [rawNote, setRawNote] = useState('');
     const [encounterDate, setEncounterDate] = useState(new Date().toISOString().split('T')[0]);
     const [encounter, setEncounter] = useState<Encounter | null>(null);
+    const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+    const [evidenceModeEnabled, setEvidenceModeEnabled] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const [progress, setProgress] = useState<string[]>([]);
@@ -154,10 +173,21 @@ export default function EncounterGeneratorPage() {
                 patient_id: Number(id),
                 raw_note: rawNote,
                 encounter_date: new Date(encounterDate).toISOString(),
+                evidence_mode_enabled: evidenceModeEnabled,
             });
             clearInterval(interval);
             const enc: Encounter = res.data;
             setEncounter(enc);
+
+            // Fetch Quality Report v2
+            try {
+                const qRes = await encounterApi.getQualityReport(enc.encounter_id);
+                setQualityReport(qRes.data);
+                addProgress('🛡️ Clinical Governance & Safety Audit complete');
+            } catch (qErr) {
+                console.error("Failed to load quality report", qErr);
+            }
+
             addProgress(`✅ Encounter #${enc.encounter_id} generated in < 4 seconds`);
             addProgress('⚠️  Review all AI outputs before confirming.');
             connectWs(enc.encounter_id);
@@ -256,6 +286,25 @@ export default function EncounterGeneratorPage() {
                                     className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500" />
                             </div>
                         </div>
+                    </div>
+
+                    {/* v2 Evidence Mode Toggle */}
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${evidenceModeEnabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                                <Shield size={18} />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-slate-900 leading-none mb-1">Evidence Mode (v2)</p>
+                                <p className="text-[10px] text-slate-400 font-medium tracking-tight">Governance + Deterministic Safety</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setEvidenceModeEnabled(!evidenceModeEnabled)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${evidenceModeEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${evidenceModeEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
                     </div>
 
                     {/* Generate button */}
@@ -476,6 +525,190 @@ export default function EncounterGeneratorPage() {
                                     ))}
                                 </div>
                             </Section>
+                        )}
+
+                        {/* --- Clinical Sense v2: Expansion Tabs --- */}
+                        {qualityReport && (
+                            <div className="space-y-5 pt-4 border-t-2 border-slate-100">
+                                <div className="flex items-center gap-2 px-2">
+                                    <Zap size={16} className="text-indigo-600" />
+                                    <h3 className="text-xs font-black text-indigo-900 uppercase tracking-widest">Clinical expansion (v2)</h3>
+                                </div>
+
+                                {/* 1. Safety Section */}
+                                <Section title="🛡 Safety & Drug Interactions" icon={<Shield size={16} />}>
+                                    <div className="space-y-4 mt-2">
+                                        {/* Critical/Moderate Interactions */}
+                                        {qualityReport.drug_safety_flags?.critical_interactions?.length > 0 && (
+                                            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                                                <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-3">CRITICAL INTERACTIONS</p>
+                                                <div className="space-y-3">
+                                                    {qualityReport.drug_safety_flags.critical_interactions.map((ci: any, i: number) => (
+                                                        <div key={i} className="flex items-start gap-2">
+                                                            <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                                                            <div>
+                                                                <p className="text-xs font-black text-slate-900">{ci.drugs.join(' + ').toUpperCase()}</p>
+                                                                <p className="text-xs text-red-700 mt-0.5 leading-relaxed">{ci.message}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Contraindications */}
+                                        {qualityReport.drug_safety_flags?.contraindications?.length > 0 && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">CONTRAINDICATIONS</p>
+                                                <div className="space-y-3">
+                                                    {qualityReport.drug_safety_flags.contraindications.map((c: any, i: number) => (
+                                                        <div key={i} className="flex items-start gap-2">
+                                                            <Shield size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                                                            <div>
+                                                                <p className="text-xs font-black text-slate-900">{c.drug.toUpperCase()}</p>
+                                                                <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">{c.reason}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Clinical Rules Flags */}
+                                        {qualityReport.clinical_safety_flags?.critical_flags?.length > 0 && (
+                                            <div className="bg-slate-900 rounded-xl p-4">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">SAFETY RULE VIOLATIONS</p>
+                                                <div className="space-y-2">
+                                                    {qualityReport.clinical_safety_flags.critical_flags.map((f: string, i: number) => (
+                                                        <div key={i} className="text-xs text-red-400 flex items-start gap-2">
+                                                            <Lock size={12} className="mt-0.5 shrink-0" />
+                                                            {f}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(!qualityReport.drug_safety_flags?.critical_interactions?.length && !qualityReport.drug_safety_flags?.contraindications?.length && !qualityReport.clinical_safety_flags?.critical_flags?.length) && (
+                                            <div className="text-center py-6 text-slate-400 italic text-xs">No critical safety flags detected.</div>
+                                        )}
+                                    </div>
+                                </Section>
+
+                                {/* 2. Risk Metrics */}
+                                <Section title="📊 Structured Risk Scores" icon={<Activity size={16} />}>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">BMI</p>
+                                            <p className="text-lg font-black text-slate-900">{qualityReport.structured_risk_metrics?.bmi || 'N/A'}</p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">POLYPHARMACY RISK</p>
+                                            <p className={`text-sm font-black ${qualityReport.structured_risk_metrics?.polypharmacy_risk ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                {qualityReport.structured_risk_metrics?.polypharmacy_risk ? 'HIGH RISK' : 'LOW RISK'}
+                                            </p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">READMISSION RISK</p>
+                                            <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                                                <div className={`h-full rounded-full ${qualityReport.structured_risk_metrics?.readmission_risk_score > 60 ? 'bg-red-500' : 'bg-teal-500'}`} style={{ width: `${qualityReport.structured_risk_metrics?.readmission_risk_score || 0}%` }} />
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-400 mt-1">{qualityReport.structured_risk_metrics?.readmission_risk_score || 0}% Probability</p>
+                                        </div>
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">FALL RISK</p>
+                                            <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                                                <div className={`h-full rounded-full ${qualityReport.structured_risk_metrics?.fall_risk_score > 50 ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${qualityReport.structured_risk_metrics?.fall_risk_score || 0}%` }} />
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-400 mt-1">{qualityReport.structured_risk_metrics?.fall_risk_score || 0}/100 Score</p>
+                                        </div>
+                                    </div>
+                                </Section>
+
+                                {/* 3. Evidence & Rationales */}
+                                <Section title="📚 Evidence & Rationales" icon={<BookOpen size={16} />}>
+                                    <div className="space-y-4 mt-2">
+                                        {qualityReport.rationale_json?.diagnosis_rationale?.map((dr: any, i: number) => (
+                                            <div key={i} className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-black">DIAGNOSIS</span>
+                                                    <span className="text-xs font-black text-slate-900">{dr.condition}</span>
+                                                </div>
+                                                <p className="text-xs text-slate-700 leading-relaxed italic border-l-2 border-indigo-300 pl-3 mb-2">{dr.evidence}</p>
+                                                <div className="flex items-start gap-2 bg-white/60 p-2 rounded-lg text-[10px] text-indigo-600 font-medium">
+                                                    <Link2 size={12} className="shrink-0 mt-0.5" />
+                                                    <span>Snippet: "{dr.source_snippet}"</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {qualityReport.guideline_flags?.guideline_gaps?.length > 0 && (
+                                            <div className="bg-slate-50 rounded-xl p-4">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">GUIDELINE COMPLIANCE GAPS</p>
+                                                <div className="space-y-2">
+                                                    {qualityReport.guideline_flags.guideline_gaps.map((gap: string, i: number) => (
+                                                        <div key={i} className="text-xs text-slate-600 flex items-start gap-2">
+                                                            <ExternalLink size={12} className="text-slate-400 mt-0.5 shrink-0" />
+                                                            {gap}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </Section>
+
+                                {/* 4. Lab Interpretations */}
+                                <Section title="🔬 Lab Interpretation" icon={<Microscope size={16} />}>
+                                    <div className="space-y-3 mt-2">
+                                        {qualityReport.lab_interpretation?.abnormal_labs?.map((lab: any, i: number) => (
+                                            <div key={i} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                                                <div>
+                                                    <p className="text-xs font-black text-slate-900">{lab.lab}</p>
+                                                    <p className="text-[10px] text-slate-400">{lab.threshold} {lab.unit} (Normal range upper)</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className={`text-xs font-black ${lab.status === 'High' ? 'text-red-600' : 'text-blue-600'}`}>{lab.value}{lab.unit}</span>
+                                                    <p className={`text-[10px] font-black ${lab.status === 'High' ? 'text-red-400' : 'text-blue-400'}`}>{lab.status.toUpperCase()}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {qualityReport.lab_interpretation?.interpretations?.map((txt: string, i: number) => (
+                                            <p key={i} className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border-l-2 border-slate-300">{txt}</p>
+                                        ))}
+                                        {(!qualityReport.lab_interpretation?.abnormal_labs?.length) && (
+                                            <div className="text-center py-6 text-slate-400 italic text-xs">No active abnormal labs detected in note.</div>
+                                        )}
+                                    </div>
+                                </Section>
+
+                                {/* 5. Handoff (SBAR) */}
+                                <Section title="🔁 SBAR Handoff" icon={<Repeat size={16} />}>
+                                    <div className="space-y-4 mt-2">
+                                        {['situation', 'background', 'assessment', 'recommendation'].map(key => (
+                                            <div key={key} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{key}</p>
+                                                <p className="text-xs text-slate-700 leading-relaxed font-mono">{qualityReport.handoff_sbar?.[key] || '...'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Section>
+
+                                {/* 6. Differentials */}
+                                <Section title="🧠 Differential Diagnosis" icon={<BrainCircuit size={16} />}>
+                                    <div className="space-y-3 mt-2">
+                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2 mb-2">
+                                            <AlertCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                            <p className="text-[10px] text-blue-700 font-bold leading-tight">ASSISTIVE ONLY — Consider these alternatives based on symptoms mentioned in the note.</p>
+                                        </div>
+                                        {qualityReport.differential_output?.possible_differentials?.map((diff: any, i: number) => (
+                                            <div key={i} className="p-4 bg-white border border-slate-100 rounded-xl shadow-sm">
+                                                <div className="flex items-start justify-between mb-1">
+                                                    <p className="text-sm font-black text-slate-900">{diff.condition}</p>
+                                                    <span className="text-[10px] font-black text-slate-400">{Math.round(diff.confidence * 100)}% Match</span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 leading-relaxed">{diff.reason}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Section>
+                            </div>
                         )}
 
                         {/* Confirm CTA at bottom */}

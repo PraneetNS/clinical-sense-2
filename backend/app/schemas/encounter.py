@@ -17,6 +17,7 @@ class EncounterRequest(BaseModel):
     patient_id: int = Field(..., description="ID of the patient")
     raw_note: str = Field(..., min_length=10, max_length=50_000, description="Raw clinical note text")
     encounter_date: Optional[datetime] = Field(None, description="ISO datetime of the encounter")
+    evidence_mode_enabled: bool = Field(False, description="Enable clinical expansion features")
 
     @field_validator("raw_note")
     @classmethod

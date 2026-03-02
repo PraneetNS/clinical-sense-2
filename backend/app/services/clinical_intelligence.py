@@ -41,8 +41,19 @@ from ..models import (
     BillingItem,
     Task,
     AuditLog,
+    AIQualityReport,
+    AIUsageMetrics,
 )
 from ..services.ai.ai_service import AIService
+from ..services.clinical_rules import evaluate_clinical_rules
+from .clinical_expansion.explainability import ExplainabilityEngine
+from .clinical_expansion.drug_safety import evaluate_drug_safety
+from .clinical_expansion.risk_calculators import calculate_structured_risks
+from .clinical_expansion.guideline_validator import evaluate_guideline_compliance
+from .clinical_expansion.differential_assistant import DifferentialAssistant
+from .clinical_expansion.lab_interpreter import evaluate_labs
+from .clinical_expansion.handoff import HandoffGenerator
+from .clinical_expansion.workflow_engine import WorkflowAutomationEngine
 from ..schemas.encounter import (
     EncounterRequest,
     EncounterResponse,
@@ -96,6 +107,12 @@ class ClinicalIntelligenceOrchestrator:
         self.db = db
         self.ai = ai_service
         self._token_log: Dict[str, int] = {}
+        
+        # Expansion Engines
+        self.explainer = ExplainabilityEngine(ai_service)
+        self.differential_assistant = DifferentialAssistant(ai_service)
+        self.handoff_generator = HandoffGenerator(ai_service)
+        self.workflow_engine = WorkflowAutomationEngine(db)
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -153,34 +170,128 @@ class ClinicalIntelligenceOrchestrator:
             return_exceptions=False,
         )
 
-        total_latency = round(time.time() - start_ts, 2)
+        # --------------- 2. Quality & Safety Evaluation ---------------
+        # Model version for observability
+        model_version = settings.GROQ_MODEL_NAME if hasattr(settings, "GROQ_MODEL_NAME") else "llama-3-70b"
 
-        # --------------- Merge & validate outputs ---------------
-        merged = self._merge_pipeline_outputs(
+        # Merge preliminary outputs to provide context for evaluator
+        prelim_merged = self._merge_pipeline_outputs(
             encounter_data, soap_data, med_data,
             diag_data, billing_data, case_data,
             risk_data, legal_data,
         )
 
-        # --------------- Persist to database ---------------
+        # Run deterministic clinical rule engine (safe, <5ms)
+        safety_results = evaluate_clinical_rules(
+            soap_json=soap_data,
+            meds_json=prelim_merged["medications"],
+            patient_context=patient_ctx
+        )
+
+        # Run AI Quality Evaluator Agent
+        try:
+            eval_input = json.dumps({
+                "raw_note": request.raw_note,
+                "structured_output": prelim_merged
+            })
+            quality_data = await self._run_pipeline("QUALITY_EVALUATOR", eval_input, "quality")
+        except Exception as e:
+            logger.error(f"Quality evaluator failed: {e}")
+            quality_data = {
+                "confidence_score": 0.0,
+                "compliance_score": 0.0,
+                "risk_level": "HIGH",
+                "reasoning": "Evaluator execution error"
+            }
+
+        total_latency_ms = int((time.time() - start_ts) * 1000)
+
+        # --------------- 4. Clinical Expansion Pipeline (v2) ---------------
+        expansion_data = {
+            "rationale_json": None,
+            "drug_safety_flags": None,
+            "structured_risk_metrics": None,
+            "guideline_flags": None,
+            "differential_output": None,
+            "lab_interpretation": None,
+            "handoff_sbar": None,
+        }
+
+        if request.evidence_mode_enabled:
+            try:
+                # A. Deterministic modules
+                expansion_data["drug_safety_flags"] = evaluate_drug_safety(
+                    prelim_merged["medications"], 
+                    patient_ctx.get("allergies", []), 
+                    patient_ctx
+                )
+                
+                vitals = self._extract_vitals_from_soap(soap_data)
+                expansion_data["structured_risk_metrics"] = calculate_structured_risks(
+                    patient_ctx, prelim_merged["medications"], vitals
+                )
+
+                expansion_data["guideline_flags"] = evaluate_guideline_compliance(
+                    soap_data, prelim_merged["medications"], patient_ctx
+                )
+
+                expansion_data["lab_interpretation"] = evaluate_labs(soap_data, patient_ctx)
+
+                # B. LLM-powered modules (Parallel)
+                (
+                    rationale, 
+                    differentials, 
+                    sbar
+                ) = await asyncio.gather(
+                    self.explainer.generate_clinical_rationale(prelim_merged, patient_ctx),
+                    self.differential_assistant.generate_differentials(soap_data, patient_ctx),
+                    self.handoff_generator.generate_sbar(soap_data),
+                    return_exceptions=True
+                )
+                
+                expansion_data["rationale_json"] = rationale if not isinstance(rationale, Exception) else None
+                expansion_data["differential_output"] = differentials if not isinstance(differentials, Exception) else None
+                expansion_data["handoff_sbar"] = sbar if not isinstance(sbar, Exception) else None
+
+                # C. Workflow Engine
+                # Staged tasks are returned but not yet promoted to DB Task model
+                # they will be shown in the UI for confirmation.
+                staged_tasks = self.workflow_engine.stage_tasks(
+                    encounter_id=0, # Placeholder
+                    patient_id=request.patient_id,
+                    user_id=user_id,
+                    follow_up_recommendations=prelim_merged.get("followups", [])
+                )
+                expansion_data["staged_tasks"] = staged_tasks
+
+            except Exception as e:
+                logger.error(f"Clinical expansion failed: {e}")
+
+        # --------------- 5. Persist to database ---------------
         encounter = self._persist_encounter(
             patient_id=request.patient_id,
             user_id=user_id,
             request=request,
-            merged=merged,
-            latency=total_latency,
+            merged=prelim_merged,
+            latency_ms=total_latency_ms,
+            model_version=model_version,
+            quality_data=quality_data,
+            safety_results=safety_results,
+            token_usage_total=sum(self._token_log.values()) if self._token_log else 0,
+            expansion_data=expansion_data
         )
 
         logger.info(
-            "Clinical intelligence encounter generated",
+            "Clinical intelligence encounter generated (v2 context)",
             extra={"metadata": {
                 "encounter_id": encounter.id,
-                "latency_s": total_latency,
-                "token_usage": self._token_log,
+                "latency_ms": total_latency_ms,
+                "evidence_mode": request.evidence_mode_enabled,
+                "risk_level": quality_data.get("risk_level", "HIGH"),
             }},
         )
 
-        return self._build_response(encounter, merged)
+        return self._build_response(encounter, prelim_merged)
 
     # ------------------------------------------------------------------
     # Encounter confirmation (doctor clicks "Confirm & Save")
@@ -500,11 +611,16 @@ class ClinicalIntelligenceOrchestrator:
         user_id: int,
         request: EncounterRequest,
         merged: Dict,
-        latency: float,
+        latency_ms: int,
+        model_version: str,
+        quality_data: Dict,
+        safety_results: Dict,
+        token_usage_total: int,
+        expansion_data: Optional[Dict] = None,
     ) -> AIEncounter:
         """
-        Persists the full encounter and all child records to the database.
-        Uses a single transaction for atomicity.
+        Persists the full encounter, related items, quality report, and usage metrics.
+        Now includes expansion data for v2.
         """
         try:
             # Root encounter
@@ -525,9 +641,46 @@ class ClinicalIntelligenceOrchestrator:
                 legal_flags=json.dumps(merged.get("legal_flags", [])),
                 status="ready",
                 token_usage=json.dumps(self._token_log),
+                model_version=model_version,
+                processing_latency_ms=latency_ms,
             )
             self.db.add(encounter)
             self.db.flush()  # Get encounter.id
+
+            # Governance: Quality Report
+            quality_report = AIQualityReport(
+                encounter_id=encounter.id,
+                confidence_score=_clamp_float(quality_data.get("confidence_score", 0.0)),
+                compliance_score=_clamp_float(quality_data.get("compliance_score", 0.0)),
+                billing_accuracy_score=quality_data.get("billing_accuracy_score"),
+                hallucination_flags=quality_data.get("hallucination_flags"),
+                missing_critical_fields=quality_data.get("missing_critical_fields"),
+                clinical_safety_flags=safety_results,
+                risk_level=quality_data.get("risk_level", "HIGH"),
+                model_version=model_version,
+                
+                # Clinical Sense v2 Expansion
+                evidence_mode_enabled=request.evidence_mode_enabled,
+                rationale_json=expansion_data.get("rationale_json") if expansion_data else None,
+                drug_safety_flags=expansion_data.get("drug_safety_flags") if expansion_data else None,
+                structured_risk_metrics=expansion_data.get("structured_risk_metrics") if expansion_data else None,
+                guideline_flags=expansion_data.get("guideline_flags") if expansion_data else None,
+                differential_output=expansion_data.get("differential_output") if expansion_data else None,
+                lab_interpretation=expansion_data.get("lab_interpretation") if expansion_data else None,
+                handoff_sbar=expansion_data.get("handoff_sbar") if expansion_data else None,
+            )
+            self.db.add(quality_report)
+
+            # Observability: Usage Metrics
+            usage = AIUsageMetrics(
+                encounter_id=encounter.id,
+                user_id=user_id,
+                tokens_used=token_usage_total,
+                latency_ms=latency_ms,
+                accepted_without_edit=False, # Default until confirmed
+                edit_distance_score=None
+            )
+            self.db.add(usage)
 
             # Medications
             for med in merged.get("medications", []):
@@ -743,6 +896,34 @@ class ClinicalIntelligenceOrchestrator:
             "allergies": allergies,
             "active_conditions": history,
         }
+
+    def _extract_vitals_from_soap(self, soap_json: Dict) -> Dict:
+        """Extracts simple vitals from SOAP objective text using regex."""
+        import re
+        objective = str(soap_json.get("objective", "")).lower()
+        
+        vitals = {
+            "weight_kg": None,
+            "height_m": None,
+            "blood_pressure_sys": None,
+            "blood_pressure_dia": None
+        }
+        
+        # Weight (kg)
+        w_match = re.search(r'(\d+(\.\d+)?)\s*kg', objective)
+        if w_match: vitals["weight_kg"] = float(w_match.group(1))
+        
+        # Height (m)
+        h_match = re.search(r'(\d+(\.\d+)?)\s*m', objective)
+        if h_match: vitals["height_m"] = float(h_match.group(1))
+        
+        # BP
+        bp_match = re.search(r'bp\s*[:=]?\s*(\d{2,3})/(\d{2,3})', objective)
+        if bp_match:
+            vitals["blood_pressure_sys"] = int(bp_match.group(1))
+            vitals["blood_pressure_dia"] = int(bp_match.group(2))
+            
+        return vitals
 
     def _log_audit(self, user_id: int, action: str, entity_type: str, entity_id: int):
         try:

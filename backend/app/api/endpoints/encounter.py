@@ -359,3 +359,44 @@ async def encounter_ws(
     except Exception as e:
         logger.error(f"WebSocket error for encounter {encounter_id}: {str(e)}")
         progress_manager.disconnect(encounter_id, websocket)
+@router.get("/encounter/{encounter_id}/quality-report")
+async def get_quality_report(
+    encounter_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Fetches the AI quality and safety report for a specific encounter."""
+    encounter = db.query(AIEncounter).filter(AIEncounter.id == encounter_id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+    
+    # Ownership Check
+    if encounter.created_by_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    report = encounter.quality_report
+    if not report:
+        raise HTTPException(status_code=404, detail="Quality report not found for this encounter")
+    
+    return {
+        "encounter_id": encounter_id,
+        "confidence_score": report.confidence_score,
+        "compliance_score": report.compliance_score,
+        "billing_accuracy_score": report.billing_accuracy_score,
+        "hallucination_flags": report.hallucination_flags or [],
+        "missing_critical_fields": report.missing_critical_fields or [],
+        "clinical_safety_flags": report.clinical_safety_flags or {},
+        "risk_level": report.risk_level,
+        "model_version": report.model_version,
+        "created_at": report.created_at,
+        
+        # Clinical Sense v2: Deterministic + Explainable Extensions
+        "evidence_mode_enabled": report.evidence_mode_enabled,
+        "rationale_json": report.rationale_json or {},
+        "drug_safety_flags": report.drug_safety_flags or {},
+        "structured_risk_metrics": report.structured_risk_metrics or {},
+        "guideline_flags": report.guideline_flags or {},
+        "differential_output": report.differential_output or {},
+        "lab_interpretation": report.lab_interpretation or {},
+        "handoff_sbar": report.handoff_sbar or {},
+    }
