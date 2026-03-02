@@ -5,8 +5,8 @@ from ..core.config import settings
 # Engine configuration
 # Engine configuration
 engine_kwargs = {
-    "pool_size": 20,
-    "max_overflow": 10,
+    "pool_size": 5,
+    "max_overflow": 0,
     "pool_timeout": 30,
     "pool_recycle": 1800,
     "pool_pre_ping": True,

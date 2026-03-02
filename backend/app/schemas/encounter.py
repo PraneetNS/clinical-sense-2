@@ -54,6 +54,16 @@ class AIDiagnosisOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AIProcedureOut(BaseModel):
+    id: int
+    name: str
+    code: Optional[str] = None
+    notes: Optional[str] = None
+    confidence: str = "medium"
+
+    model_config = {"from_attributes": True}
+
+
 class AIBillingOut(BaseModel):
     id: int
     cpt_code: Optional[str] = None
@@ -103,6 +113,7 @@ class EncounterResponse(BaseModel):
     soap: Dict[str, Any] = {}
     medications: List[AIMedicationOut] = []
     diagnoses: List[AIDiagnosisOut] = []
+    procedures: List[AIProcedureOut] = []
     billing: List[AIBillingOut] = []
     timeline_events: List[AITimelineEventOut] = []
     followups: List[AIFollowupOut] = []
@@ -133,6 +144,8 @@ class EncounterConfirmResponse(BaseModel):
     encounter_id: int
     confirmed: bool
     confirmed_medications: List[str] = []
+    confirmed_procedures: List[str] = []
+    confirmed_diagnoses: List[str] = []
     confirmed_billing: List[str] = []
     confirmed_tasks: List[str] = []
 

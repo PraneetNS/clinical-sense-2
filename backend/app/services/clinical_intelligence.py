@@ -31,10 +31,13 @@ from ..models import (
     AIEncounter,
     AIGeneratedMedication,
     AIGeneratedDiagnosis,
+    AIGeneratedProcedure,
     AIGeneratedBilling,
     AITimelineEvent,
     AIFollowupRecommendation,
     Medication,
+    Procedure,
+    MedicalHistory,
     BillingItem,
     Task,
     AuditLog,
@@ -45,6 +48,7 @@ from ..schemas.encounter import (
     EncounterResponse,
     AIMedicationOut,
     AIDiagnosisOut,
+    AIProcedureOut,
     AIBillingOut,
     AITimelineEventOut,
     AIFollowupOut,
@@ -202,13 +206,29 @@ class ClinicalIntelligenceOrchestrator:
         if encounter.is_confirmed:
             raise HTTPException(status_code=409, detail="Encounter already confirmed")
 
-        # Promote medications
+        # 1. Promote AI Encounter to a real Clinical Note
+        note = ClinicalNote(
+            user_id=user_id,
+            patient_id=encounter.patient_id,
+            title=f"AI Encounter - {encounter.chief_complaint or 'General Consultation'}",
+            raw_content=encounter.raw_note,
+            structured_content=encounter.soap_note,
+            note_type="SOAP",
+            status="finalized",
+            encounter_date=encounter.encounter_date,
+        )
+        self.db.add(note)
+        self.db.flush()
+        encounter.note_id = note.id
+
+        # 2. Promote medications
         confirmed_meds = []
         for ai_med in encounter.medications:
             if not ai_med.requires_confirmation or ai_med.is_confirmed:
                 med = Medication(
                     patient_id=encounter.patient_id,
                     prescribed_by_id=user_id,
+                    source_note_id=note.id,
                     name=ai_med.name,
                     dosage=ai_med.dosage,
                     frequency=ai_med.frequency,
@@ -220,10 +240,28 @@ class ClinicalIntelligenceOrchestrator:
                 ai_med.confirmed_medication_id = med.id
                 confirmed_meds.append(ai_med.name)
 
-        # Promote billing items
+        # 3. Promote procedures
+        confirmed_procs = []
+        for ai_proc in encounter.procedures:
+            proc = Procedure(
+                patient_id=encounter.patient_id,
+                performer_id=user_id,
+                source_note_id=note.id,
+                name=ai_proc.name,
+                code=ai_proc.code,
+                notes=ai_proc.notes,
+                date=encounter.encounter_date,
+            )
+            self.db.add(proc)
+            self.db.flush()
+            ai_proc.is_confirmed = True
+            ai_proc.confirmed_procedure_id = proc.id
+            confirmed_procs.append(ai_proc.name)
+
+        # 4. Promote billing items
         confirmed_billing = []
         for ai_bill in encounter.billing_items:
-            if not ai_bill.requires_review or ai_bill.confidence and ai_bill.confidence >= self.CONFIDENCE_REVIEW_THRESHOLD:
+            if not ai_bill.requires_review or (ai_bill.confidence and ai_bill.confidence >= self.CONFIDENCE_REVIEW_THRESHOLD):
                 bill = BillingItem(
                     patient_id=encounter.patient_id,
                     item_name=ai_bill.description,
@@ -237,13 +275,14 @@ class ClinicalIntelligenceOrchestrator:
                 ai_bill.confirmed_billing_id = bill.id
                 confirmed_billing.append(ai_bill.cpt_code)
 
-        # Promote follow-ups as tasks
+        # 5. Promote follow-ups as tasks
         confirmed_tasks = []
         for fu in encounter.followups:
             days = fu.suggested_days or 7
             task = Task(
                 patient_id=encounter.patient_id,
                 assigned_to_id=user_id,
+                source_note_id=note.id,
                 description=f"[AI Follow-up] {fu.recommendation}",
                 priority="High" if fu.urgency == "stat" else ("Medium" if fu.urgency == "urgent" else "Low"),
                 category=fu.follow_up_type or "General",
@@ -257,9 +296,19 @@ class ClinicalIntelligenceOrchestrator:
             fu.converted_task_id = task.id
             confirmed_tasks.append(fu.recommendation[:60])
 
-        # Confirm diagnoses
+        # 6. Promote diagnoses to Medical History
+        confirmed_diagnoses = []
         for diag in encounter.diagnoses:
+            history = MedicalHistory(
+                patient_id=encounter.patient_id,
+                condition_name=diag.condition_name,
+                diagnosis_date=encounter.encounter_date,
+                status="Active",
+                notes=f"AI Inferred (Confidence: {diag.confidence_score}). {diag.reasoning or ''}",
+            )
+            self.db.add(history)
             diag.is_confirmed = True
+            confirmed_diagnoses.append(diag.condition_name)
 
         # Mark encounter as confirmed
         encounter.is_confirmed = True
@@ -275,6 +324,8 @@ class ClinicalIntelligenceOrchestrator:
             "encounter_id": encounter_id,
             "confirmed": True,
             "confirmed_medications": confirmed_meds,
+            "confirmed_procedures": confirmed_procs,
+            "confirmed_diagnoses": confirmed_diagnoses,
             "confirmed_billing": confirmed_billing,
             "confirmed_tasks": confirmed_tasks,
         }
@@ -506,6 +557,17 @@ class ClinicalIntelligenceOrchestrator:
                     is_primary=bool(diag.get("is_primary", False)),
                 ))
 
+            # Procedures
+            for proc in merged.get("procedures", []):
+                self.db.add(AIGeneratedProcedure(
+                    encounter_id=encounter.id,
+                    patient_id=patient_id,
+                    name=proc.get("name", "Unknown"),
+                    code=proc.get("code"),
+                    notes=proc.get("notes"),
+                    confidence=proc.get("confidence", "medium"),
+                ))
+
             # Billing
             for item in merged.get("billing_items", []):
                 conf = _clamp_float(item.get("confidence", 0.5))
@@ -592,6 +654,16 @@ class ClinicalIntelligenceOrchestrator:
                     is_primary=d.is_primary,
                 )
                 for d in encounter.diagnoses
+            ],
+            procedures=[
+                AIProcedureOut(
+                    id=p.id,
+                    name=p.name,
+                    code=p.code,
+                    notes=p.notes,
+                    confidence=p.confidence or "medium",
+                )
+                for p in encounter.procedures
             ],
             billing=[
                 AIBillingOut(

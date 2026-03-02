@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(null);
                 localStorage.removeItem('token');
                 if (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/public')) {
-                    router.push('/login');
+                    router.push('/');
                 }
             }
             setIsLoading(false);
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const logout = async () => {
         await signOut(auth);
-        router.push('/login');
+        router.push('/');
     };
 
     return (

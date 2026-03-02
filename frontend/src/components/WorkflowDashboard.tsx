@@ -50,10 +50,30 @@ export default function WorkflowDashboard({ patientId, onViewTasks }: WorkflowDa
         }
     };
 
+    const handleRunTrajectoryCheck = async () => {
+        setChecking(true);
+        try {
+            await workflowApi.checkTrajectory(patientId);
+            setTimeout(() => {
+                fetchData();
+                setChecking(false);
+            }, 4000);
+        } catch (error) {
+            console.error("Failed to run trajectory check", error);
+            setChecking(false);
+        }
+    };
+
     const fetchData = async () => {
         try {
             const response = await workflowApi.getDashboard(patientId);
             setData(response.data);
+
+            // Auto-trigger analysis if no data exists
+            if (response.data?.trajectory?.trend === "No Data") {
+                workflowApi.checkTrajectory(patientId);
+                setTimeout(fetchData, 8000); // Check back in 8s after AI has time to process
+            }
         } catch (error) {
             console.error("Failed to load workflow data", error);
         } finally {
@@ -98,7 +118,18 @@ export default function WorkflowDashboard({ patientId, onViewTasks }: WorkflowDa
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* 1. Trajectory Engine */}
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 relative overflow-hidden group hover:shadow-md transition-all">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Trajectory Analysis</h4>
+                    <div className="flex justify-between items-start mb-4">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trajectory Analysis</h4>
+                        <button
+                            onClick={handleRunTrajectoryCheck}
+                            disabled={checking}
+                            className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all ${checking
+                                ? 'bg-indigo-100 text-indigo-400 border-indigo-100 cursor-wait'
+                                : 'text-indigo-600 bg-white border-indigo-100 hover:bg-indigo-50 hover:shadow-sm'}`}
+                        >
+                            {checking ? 'Analyzing...' : 'Re-Check'}
+                        </button>
+                    </div>
                     <div className="flex items-center gap-4">
                         <span className={`text-5xl font-black ${getTrendColor(data.trajectory.trend)} transition-transform group-hover:scale-110`}>
                             {getTrendIcon(data.trajectory.trend)}

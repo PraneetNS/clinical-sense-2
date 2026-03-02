@@ -18,7 +18,7 @@ api.interceptors.response.use(
         if (error.response && error.response.status === 401) {
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('token');
-                window.location.href = '/login';
+                window.location.href = '/';
             }
         }
         return Promise.reject(error);
@@ -119,6 +119,7 @@ export const workflowApi = {
     getDashboard: (patientId: string | number) => api.get(`/workflow/patients/${patientId}/workflow-dashboard`),
     triggerAnalysis: (noteId: string | number) => api.post(`/workflow/notes/${noteId}/analyze`),
     checkDischarge: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/discharge-check`),
+    checkTrajectory: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/trajectory-check`),
 };
 
 export const encounterApi = {

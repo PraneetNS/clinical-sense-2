@@ -29,6 +29,19 @@ async def analyze_note_workflow(
     background_tasks.add_task(wf.process_auto_tasks, note_id)
     return {"message": "Workflow analysis started."}
 
+@router.post("/patients/{patient_id}/trajectory-check")
+async def check_trajectory(
+    patient_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    wf: WorkflowService = Depends(get_workflow_service)
+):
+    """
+    Triggers trajectory analysis specifically for a patient's overall history.
+    """
+    background_tasks.add_task(wf.analyze_patient_trajectory, patient_id)
+    return {"message": "Trajectory evaluation queued."}
+
 # 2. DISCHARGE READINESS
 @router.post("/patients/{patient_id}/discharge-check")
 async def check_discharge(

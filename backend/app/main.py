@@ -160,16 +160,20 @@ def health_check_legacy():
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info(f"Starting {settings.PROJECT_NAME} in {settings.ENV} mode")
+    logger.info("Starting Backend...")
     
     # Database Connection Check
     try:
+        from .core.config import settings
+        logger.info(f"Checking database connection to: {settings.DATABASE_URL.split('@')[-1]}")
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         db.close()
         logger.info("✅ Database connection established successfully.")
     except Exception as e:
+        import traceback
         logger.critical(f"❌ Database connection failed: {str(e)}")
+        logger.critical(traceback.format_exc())
         logger.critical("Stopping server due to database connection failure.")
         sys.exit(1)
 

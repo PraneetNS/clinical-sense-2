@@ -51,6 +51,56 @@ class WorkflowService:
         self.db.add(trajectory)
         self.db.commit()
 
+    async def analyze_patient_trajectory(self, patient_id: int):
+        """
+        Analyzes the patient's overall trajectory and risk score based on their entire context.
+        """
+        patient = self.db.query(Patient).filter(Patient.id == patient_id).first()
+        if not patient: return
+
+        # Get all notes
+        notes = self.db.query(ClinicalNote).filter(
+            ClinicalNote.patient_id == patient_id,
+            ClinicalNote.is_deleted == False
+        ).order_by(ClinicalNote.created_at.desc()).limit(5).all()
+
+        # Get active medications
+        active_meds = [m.name for m in patient.medications if m.status == "Active"]
+        
+        # Get active diagnoses
+        active_diagnoses = [h.condition_name for h in patient.medical_history if h.status == "Active"]
+        
+        # Get active procedures
+        procedures = [p.name for p in patient.procedures]
+
+        context = {
+            "patient_info": {
+                "age": (datetime.datetime.utcnow() - patient.date_of_birth).days // 365 if patient.date_of_birth else "Unknown",
+                "gender": patient.gender or "Unknown"
+            },
+            "recent_clinical_notes": [n.raw_content[:500] for n in notes] if notes else ["No clinical notes available."],
+            "active_medications": active_meds if active_meds else ["None"],
+            "active_diagnoses": active_diagnoses if active_diagnoses else ["None"],
+            "procedures": procedures if procedures else ["None"]
+        }
+        
+        result = await self.ai.run_hospital_agent("TRAJECTORY", context)
+        
+        if "error" in result:
+            logger.error(f"Trajectory analysis failed: {result['error']}")
+            return
+
+        trajectory = ClinicalTrajectory(
+            patient_id=patient.id,
+            note_id=notes[0].id if notes else None, # Associate with latest note if possible
+            trend=result.get("trend", "Uncertain"),
+            risk_score=result.get("risk_score", 0),
+            confidence_score=result.get("confidence_score", 0.0),
+            key_changes=json.dumps(result.get("key_changes", []))
+        )
+        self.db.add(trajectory)
+        self.db.commit()
+
     async def generate_patient_summary(self, note_id: int):
         """
         Generates a patient-friendly summary of the note.

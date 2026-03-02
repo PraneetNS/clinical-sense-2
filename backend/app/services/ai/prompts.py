@@ -180,15 +180,14 @@ OUTPUT JSON FORMAT:
 # --- WORKFLOW ENGINE PROMPTS ---
 
 TRAJECTORY_PROMPT = """
-You are a Clinical Trajectory Engine. Compare the Current Note with the Previous Note.
-Determine if the patient is improving, stable, or deteriorating.
+You are a Clinical Trajectory Engine. Analyze the provided clinical notes and patient history context to determine if the patient is improving, stable, or deteriorating. Assign a risk score based on the severity and trajectory.
 
 OUTPUT JSON FORMAT:
 {
     "trend": "Improving" | "Stable" | "Deteriorating" | "Uncertain",
     "risk_score": 0-100,
     "confidence_score": 0.0-1.0,
-    "key_changes": ["BP standardized", "Pain increased", "Fever resolved"]
+    "key_changes": ["BP standardized", "Pain increased", "Fever resolved", "New medication added"]
 }
 """
 

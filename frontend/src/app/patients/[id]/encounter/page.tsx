@@ -16,6 +16,7 @@ import {
 /* ─────────────────── Types ─────────────────── */
 interface Medication { id: number; name: string; dosage?: string; frequency?: string; route?: string; duration?: string; start_date_text?: string; requires_confirmation: boolean; fields_required: string[]; confidence: string; }
 interface Diagnosis { id: number; condition_name: string; icd10_code?: string; confidence_score: number; reasoning?: string; is_primary: boolean; }
+interface Procedure { id: number; name: string; code?: string; notes?: string; confidence: string; }
 interface BillingItem { id: number; cpt_code?: string; description: string; estimated_cost?: number; complexity: string; confidence: number; requires_review: boolean; review_reason?: string; }
 interface TimelineEvent { id: number; event_type: string; event_description: string; event_date_text?: string; severity: string; }
 interface Followup { id: number; recommendation: string; follow_up_type?: string; urgency: string; suggested_days?: number; }
@@ -23,6 +24,7 @@ interface Encounter {
     encounter_id: number; patient_id: number; status: string; is_confirmed: boolean;
     encounter_date: string; chief_complaint: string;
     soap: Record<string, string>; medications: Medication[]; diagnoses: Diagnosis[];
+    procedures: Procedure[];
     billing: BillingItem[]; timeline_events: TimelineEvent[]; followups: Followup[];
     risk_score: string; risk_flags: string[]; legal_flags: string[];
     admission_required: boolean; icu_required: boolean; follow_up_days?: number;
@@ -177,8 +179,12 @@ export default function EncounterGeneratorPage() {
         try {
             const res = await encounterApi.confirm(encounter.encounter_id);
             addProgress('✅ Encounter confirmed & data promoted to clinical records');
+            addProgress('📝 Clinical note saved');
+            addProgress('💊 Medications activated');
+            addProgress('🔬 Diagnoses added to medical history');
+            addProgress('📋 Procedures recorded');
             setEncounter(e => e ? { ...e, is_confirmed: true, status: 'confirmed' } : e);
-            showToast('Encounter confirmed. Data saved to clinical records.', 'success');
+            showToast('Encounter confirmed. All data saved to patient record.', 'success');
         } catch (err: any) {
             showToast(getErrorMessage(err) || 'Confirmation failed', 'error');
         } finally {
@@ -369,6 +375,26 @@ export default function EncounterGeneratorPage() {
                             )}
                         </Section>
 
+                        {/* Procedures */}
+                        <Section title="AI Extracted Procedures" icon={<Activity size={16} />} badge={encounter.procedures?.length}>
+                            {!encounter.procedures || encounter.procedures.length === 0 ? <p className="text-slate-400 italic text-sm mt-3">No procedures extracted.</p> : (
+                                <div className="space-y-3 mt-3">
+                                    {encounter.procedures.map(proc => (
+                                        <div key={proc.id} className="p-4 rounded-xl border border-slate-100 bg-white">
+                                            <div className="flex items-start justify-between">
+                                                <div>
+                                                    <div className="font-black text-slate-900">{proc.name}</div>
+                                                    {proc.code && <div className="text-xs font-mono text-blue-600 mt-0.5">{proc.code}</div>}
+                                                    {proc.notes && <div className="text-xs text-slate-500 mt-1">{proc.notes}</div>}
+                                                </div>
+                                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${proc.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' : proc.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{proc.confidence}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Section>
+
                         {/* Billing */}
                         <Section title="AI Billing Intelligence" icon={<CreditCard size={16} />} badge={encounter.billing.length}>
                             <div className="flex items-center gap-2 mt-3 mb-4">
@@ -455,8 +481,8 @@ export default function EncounterGeneratorPage() {
                         {/* Confirm CTA at bottom */}
                         {!encounter.is_confirmed && (
                             <div className="bg-gradient-to-r from-teal-600 to-cyan-700 rounded-2xl p-6 text-white">
-                                <h3 className="font-black text-lg mb-1">Ready to confirm?</h3>
-                                <p className="text-teal-100 text-sm mb-4">Confirming will promote all high-confidence AI outputs into the permanent clinical record (medications, billing, follow-up tasks).</p>
+                                <h3 className="font-black text-lg mb-1">Ready to finalise?</h3>
+                                <p className="text-teal-100 text-sm mb-4">Confirming will promote all AI outputs into the permanent clinical record. This includes saving the structured SOAP note, activating medications, recording procedures, and updating medical history.</p>
                                 <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-2 px-6 py-3 bg-white text-teal-700 font-black rounded-xl hover:bg-teal-50 transition-colors disabled:opacity-60">
                                     {confirming ? <Loader2 size={16} className="animate-spin" /> : <CheckSquare size={16} />}
                                     Confirm & Save to Clinical Records

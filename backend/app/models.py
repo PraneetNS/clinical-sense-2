@@ -243,7 +243,7 @@ class ClinicalTrajectory(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
-    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=True, index=True)
     
     trend = Column(String) # Improving, Stable, Deteriorating, Uncertain
     risk_score = Column(Integer) # 0-100
@@ -529,6 +529,7 @@ class AIEncounter(Base):
     confirmer = relationship("User", foreign_keys=[confirmed_by_id])
     medications = relationship("AIGeneratedMedication", back_populates="encounter", cascade="all, delete-orphan")
     diagnoses = relationship("AIGeneratedDiagnosis", back_populates="encounter", cascade="all, delete-orphan")
+    procedures = relationship("AIGeneratedProcedure", back_populates="encounter", cascade="all, delete-orphan")
     billing_items = relationship("AIGeneratedBilling", back_populates="encounter", cascade="all, delete-orphan")
     timeline_events = relationship("AITimelineEvent", back_populates="encounter", cascade="all, delete-orphan")
     followups = relationship("AIFollowupRecommendation", back_populates="encounter", cascade="all, delete-orphan")
@@ -565,6 +566,33 @@ class AIGeneratedMedication(Base):
     encounter = relationship("AIEncounter", back_populates="medications")
     patient = relationship("Patient")
     confirmed_medication = relationship("Medication")
+
+
+class AIGeneratedProcedure(Base):
+# ... (same as before, it was correct)
+    """AI-extracted procedure from a clinical note — pending doctor confirmation."""
+    __tablename__ = "ai_generated_procedures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+
+    name = Column(String, nullable=False)
+    code = Column(String, nullable=True) # CPT/ICD
+    notes = Column(Text, nullable=True)
+
+    # Doctor confirmation
+    is_confirmed = Column(Boolean, default=False)
+    confirmed_procedure_id = Column(Integer, ForeignKey("procedures.id"), nullable=True)
+
+    ai_generated = Column(Boolean, default=True)
+    confidence = Column(String, nullable=True)            # high / medium / low
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    encounter = relationship("AIEncounter", back_populates="procedures")
+    patient = relationship("Patient")
+    confirmed_procedure = relationship("Procedure")
 
 
 class AIGeneratedDiagnosis(Base):

@@ -236,6 +236,13 @@ async def get_encounter(
             }
             for d in encounter.diagnoses
         ],
+        procedures=[
+            {
+                "id": p.id, "name": p.name, "code": p.code,
+                "notes": p.notes, "confidence": p.confidence or "medium",
+            }
+            for p in encounter.procedures
+        ],
         billing=[
             {
                 "id": b.id, "cpt_code": b.cpt_code, "description": b.description,
