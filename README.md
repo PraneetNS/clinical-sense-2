@@ -1,167 +1,112 @@
-# Clinical Documentation Assistant
+# Clinical Sense v2: Deterministic AI Clinical Intelligence Platform
 
-A secure, production-ready AI-powered clinical documentation system built with FastAPI and Next.js.
+A secure, production-ready AI-powered clinical documentation system built with FastAPI and Next.js. **Clinical Sense v2** is expanded with robust governance, deterministic safety guardrails, and explainable AI modules.
 
-## Features
+## 🚀 Key Features (v2)
 
-- **AI-Powered Note Structuring**: Converts raw clinical notes into structured SOAP format using Groq/OpenAI
-- **Patient Management**: Complete CRUD operations for patient records
-- **Clinical Timeline**: Unified view of all patient clinical events
-- **Case Status Management**: Track patient cases (Active/Closed) with audit logging
-- **PDF Report Generation**: Comprehensive patient reports with timeline
-- **Role-Based Access Control**: Admin, Clinician, and Staff roles
-- **Audit Logging**: Full history tracking for all clinical notes
-- **Security**: JWT authentication, rate limiting, input validation
+### 🧠 Intelligence Engine
+- **Parallel Intelligence Orchestrator**: Executes 6+ AI pipelines simultaneously (SOAP, Meds, Billing, Risk, Legal, Coding) for <4s encounter generation.
+- **Evidence Mode & Explainability**: Justifies AI outputs using direct quote snippets and source evidence from the original clinical note.
+- **Assistive Differential Diagnosis**: Suggests alternative diagnoses for clinician consideration with built-in confidence scoring.
+- **SBAR Handoff Generation**: Automatically assembles Situation-Background-Assessment-Recommendation handoffs.
 
-## Tech Stack
+### 🛡️ Clinical Expansion Layer (Deterministic & Safe)
+- **Deterministic Drug Safety Engine**: Evaluates drug-drug interactions, allergies, and contraindications (e.g. Metformin vs eGFR) without AI hallucination risk.
+- **Lab Interpreter**: Automatically analyzes lab results against standard ranges and flags critical values.
+- **Structured Risk Calculators**: Hard-coded logic for BMI, Polypharmacy risk, Readmission risk, and Fall risk.
+- **Guideline Validator**: Rule-based screening for hypertension, diabetes, and preventive care guidelines.
+- **Bias & Drift Monitor**: Tracks model performance and identifies potential bias in AI extractions across patient demographics.
 
-**Backend**:
-- FastAPI (Python)
-- SQLAlchemy ORM
-- Alembic migrations
-- PostgreSQL (production) / SQLite (development)
-- JWT authentication
-- Groq/OpenAI integration
+### 📊 Governance & Admin
+- **AI Governance Dashboard**: Real-time Super Admin monitoring of model performance, confidence drift, and operational safety metrics.
+- **Patient Timeline**: Complete longitudinal tracking of all clinical events and interventions.
+- **PDF Report Generation**: Securely generates patient activity and encounter reports.
 
-**Frontend**:
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Axios for API calls
+---
 
-## Quick Start (Development)
+## 🏗️ Architecture: The "Intelligence + Governance" Model
+
+Clinical Sense v2 shifts from a pure generative architecture to an **Intelligence + Governance** model. AI agents extract and structure, while the **Clinical Expansion Layer** validates and calculates risks deterministically.
+
+**Flow of Intelligence:**
+1. **Raw Note** → 2. **Parallel Agentic Pipelines** → 3. **Clinical Expansion Layer** (Safety & Risks) → 4. **AI Quality Evaluator** → 5. **Staging Table** → 6. **Clinician Confirmation** → 7. **Permanent Record**.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Backend**: FastAPI (Python), PostgreSQL, SQLAlchemy ORM, Alembic, JWT & Firebase Auth, Groq AI (LLaMA inference).
+- **Frontend**: Next.js 14 (App Router), React TypeScript, Tailwind CSS, Lucide Icons, Framer Motion.
+
+---
+
+## ⚡ Quick Start (Development)
 
 ### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- PostgreSQL (optional, uses SQLite by default)
+- Python 3.9+ | Node.js 18+ | PostgreSQL
 
 ### Backend Setup
-
 ```bash
 cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and add your API keys
-# At minimum, set GROQ_API_KEY or OPENAI_API_KEY
-
-# Run migrations
+# Database setup
 python -m alembic upgrade head
-
-# Create initial user (optional)
-python seed_user.py
+python ../seed_initial_user.py # Create a root user
 
 # Start server
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8090 --reload
 ```
-
-Backend will be available at `http://localhost:8000`
+*Available at: `http://127.0.0.1:8090` (Health: `/health`)*
 
 ### Frontend Setup
-
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Create environment file
-cp .env.example .env.local
-
-# Start development server
 npm run dev
 ```
+*Available at: `http://localhost:3005`*
 
-Frontend will be available at `http://localhost:3000`
+---
 
-## Production Deployment
+## 🧪 Sample Encounter Inputs (Try these!)
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment instructions.
+Paste these into the "New Encounter" text area to see the intelligence engine in action:
 
-### Quick Deploy Summary
+**Sample A: Geriatric Follow-up**
+> "72-year-old male for follow-up of Hypertension and Type 2 Diabetes. BP today 155/92. Patient reports skip-beats. Meds: Lisinopril 20mg, Metformin 1000mg BID. Plan: Increase Lisinopril to 40mg. Follow up 3 months."
 
-**Backend (Railway/Render)**:
-1. Set environment variables (ENV, JWT_SECRET, DATABASE_URL, FRONTEND_URL, GROQ_API_KEY)
-2. Connect repository
-3. Deploy (migrations run automatically)
+**Sample B: High Risk (Fall/Polypharmacy)**
+> "Alice (82F) post-hospitalization for CHF. Taking 12 meds including Warfarin, Lorazepam, and Furosemide. Reports dizziness on standing. Lives alone. History of gait instability."
 
-**Frontend (Vercel)**:
-1. Set NEXT_PUBLIC_API_URL
-2. Connect repository
-3. Deploy
+---
 
-## Environment Variables
+## 📁 Project Structure
 
-### Backend (Required)
-```bash
-ENV=production
-JWT_SECRET=<secure-random-string>
-DATABASE_URL=<postgresql-connection-string>
-FRONTEND_URL=<your-vercel-url>
-GROQ_API_KEY=<your-groq-key>  # OR OPENAI_API_KEY
-```
-
-### Frontend (Required)
-```bash
-NEXT_PUBLIC_API_URL=<your-backend-url>/api/v1
-```
-
-## API Documentation
-
-When running in development mode, API docs are available at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-In production, these endpoints are disabled for security.
-
-## Security Features
-
-- JWT-based authentication with configurable expiration
-- Rate limiting (10 req/min for AI endpoints, 100 req/min global)
-- Request size limits (10MB max)
-- CORS restricted to frontend domain
-- Input validation on all endpoints
-- SQL injection prevention via ORM
-- Path traversal protection for file uploads
-- Structured logging with request IDs
-
-## Project Structure
-
-```
-clinical-doc-assistant/
+```text
+clinical-sense-2/
 ├── backend/
 │   ├── app/
-│   │   ├── api/          # API endpoints
-│   │   ├── core/         # Config, security, logging
-│   │   ├── db/           # Database session
-│   │   ├── models.py     # SQLAlchemy models
-│   │   ├── schemas/      # Pydantic schemas
-│   │   └── services/     # Business logic
-│   ├── alembic/          # Database migrations
-│   ├── requirements.txt
-│   └── Procfile          # Deployment config
+│   │   ├── api/endpoints/         # Encounter WS, Admin Governance, Patient API
+│   │   ├── services/
+│   │   │   ├── ai/                # Prompt Registry & Groq Service
+│   │   │   ├── clinical_intelligence.py  # Parallel Orchestrator
+│   │   │   └── clinical_expansion/# Deterministic engines (Safety, Lab, Risk)
+│   │   └── models.py              # Staging table & AIQualityReport
 ├── frontend/
-│   ├── src/
-│   │   ├── app/          # Next.js pages
-│   │   ├── components/   # React components
-│   │   └── lib/          # API client
-│   └── package.json
-└── DEPLOYMENT.md         # Deployment guide
+│   ├── src/app/
+│   │   ├── admin/                 # Governance & Monitoring
+│   │   ├── patients/[id]/         # Encounter & Timeline UI
+│   │   └── dashboard/             # Clinical overview
+└── README.md
 ```
 
-## License
+---
 
-Proprietary - All rights reserved
+## ⚖️ Disclaimer
+*Clinical Sense v2 is strictly an assistive tool. It does NOT provide medical advice or diagnoses. All AI-generated content must be reviewed and confirmed by a licensed clinician before inclusion in the permanent medical record.*
 
-## Support
-
-For deployment issues, see [DEPLOYMENT.md](./DEPLOYMENT.md) troubleshooting section.
+---
+**License**: Proprietary - All rights reserved.
