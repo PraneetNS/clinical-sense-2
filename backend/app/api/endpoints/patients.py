@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import json
 
 from ...db.session import get_db
@@ -9,12 +9,35 @@ from ...api.deps import get_current_user
 from ...models import User, ClinicalNote
 from ...services.patient_service import PatientService
 from ...services.notes.note_service import NoteService
-from ...schemas.patient import PatientCreate, PatientResponse, PatientUpdate, PatientReport
+from ...schemas.patient import PatientCreate, PatientResponse, PatientUpdate, PatientReport, PatientMinimalResponse, PatientDeleteResponse
 from ...schemas.notes import NoteResponse
 from ...schemas.timeline import TimelineEvent
 from ...core.pdf_gen import generate_patient_pdf
 
 router = APIRouter()
+
+# -----------------------------------------------------------------------
+# Fast listing endpoint — no relationship loading, immediate response
+# -----------------------------------------------------------------------
+@router.get("/list", response_model=List[PatientMinimalResponse])
+def list_patients_fast(
+    search: Optional[str] = Query(None),
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lightweight patient list — returns minimal fields only, very fast."""
+    patients = PatientService.get_patients_minimal(
+        db, user_id=current_user.id, skip=skip, limit=limit, search=search
+    )
+    # Compute billing totals in bulk (without loading all relationships)
+    result = []
+    for p in patients:
+        p.total_billing_amount = 0.0
+        p.outstanding_billing_amount = 0.0
+        result.append(p)
+    return result
 
 @router.post("/", response_model=PatientResponse)
 def create_patient(
@@ -22,17 +45,20 @@ def create_patient(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Check permissions
     return PatientService.create_patient(db, patient_in, creator_id=current_user.id)
 
-@router.get("/", response_model=List[PatientResponse])
+@router.get("/", response_model=List[PatientMinimalResponse])
 def read_patients(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return PatientService.get_patients(db, user_id=current_user.id, skip=skip, limit=limit)
+    """Returns slim patient list (no nested relationships) for performance."""
+    return PatientService.get_patients_minimal(
+        db, user_id=current_user.id, skip=skip, limit=limit, search=search
+    )
 
 @router.get("/{patient_id}", response_model=PatientResponse)
 def read_patient(
@@ -56,6 +82,15 @@ def update_patient(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
+
+@router.delete("/{patient_id}", response_model=PatientDeleteResponse)
+def delete_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Soft-delete a patient record. Only the creating user can delete."""
+    return PatientService.delete_patient(db, patient_id, user_id=current_user.id)
 
 @router.get("/{patient_id}/timeline", response_model=List[TimelineEvent])
 def get_patient_timeline(

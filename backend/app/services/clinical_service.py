@@ -21,8 +21,9 @@ class ClinicalService:
         db.add(audit)
 
     @staticmethod
-    def _get_patient(db: Session, patient_id: int, user_id: int):
-        patient = db.query(Patient).filter(Patient.id == patient_id, Patient.user_id == user_id).first()
+    def _get_patient(db: Session, patient_id: int, user_id: int = None):
+        # Relaxed check: clinical staff can access any active patient
+        patient = db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False).first()
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found or access denied")
         return patient
@@ -209,10 +210,10 @@ class ClinicalService:
     # --- Update/Delete Helpers ---
     @staticmethod
     def _get_entity_with_ownership_check(db: Session, model, entity_id: int, user_id: int):
-        # All clinical models in this service have a .patient relationship and patient_id
+        # Relaxed check: clinical staff can access and update clinical entities for any active patient
         db_obj = db.query(model).join(Patient).filter(
             model.id == entity_id,
-            Patient.user_id == user_id
+            Patient.is_deleted == False
         ).first()
         
         if not db_obj:

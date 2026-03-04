@@ -36,24 +36,42 @@ def verify_token_and_get_user(db: Session, token_str: str) -> models.User:
         raise credentials_exception
         
     # Get or Create User
+    # Use a safe get-or-create pattern to handle race conditions
     user = db.query(models.User).filter(models.User.email == email).first()
     
     if not user:
-        # Auto-create user from Firebase info
-        from ..core.logging import logger
-        logger.info(f"Auto-creating user from Firebase: {email}")
-        user = models.User(
-            email=email,
-            firebase_uid=firebase_uid,
-            full_name=decoded_token.get("name", email.split('@')[0]),
-            is_active=True,
-            role="DOCTOR"  # Default role — canonical RBAC value
-        )
+        try:
+            # Auto-create user from Firebase info
+            from ..core.logging import logger
+            logger.info(f"Auto-creating user from Firebase: {email}")
+            user = models.User(
+                email=email,
+                firebase_uid=firebase_uid,
+                full_name=decoded_token.get("name", email.split('@')[0]),
+                is_active=True,
+                role="DOCTOR"  # Default role
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        except Exception as e:
+            db.rollback()
+            # If creation failed, check if user was created by a parallel request
+            user = db.query(models.User).filter(models.User.email == email).first()
+            if not user:
+                from ..core.logging import logger
+                logger.error(f"Failed to sync user {email}: {e}")
+                raise HTTPException(status_code=500, detail="User account synchronization failed.")
+    
+    # Ensure firebase_uid is linked if it wasn't already
+    if user and not user.firebase_uid:
+        user.firebase_uid = firebase_uid
         db.add(user)
         db.commit()
-        db.refresh(user)
-    elif not user.firebase_uid:
+    elif user and user.firebase_uid != firebase_uid:
+        # If UID changed for some reason, update it (or log a warning)
         user.firebase_uid = firebase_uid
+        db.add(user)
         db.commit()
         
     if not user.is_active:

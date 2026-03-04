@@ -42,6 +42,8 @@ export default function PatientDetailPage() {
     const [modalType, setModalType] = useState<string | null>(null);
     const [editingItem, setEditingItem] = useState<any | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showDeletePatientConfirm, setShowDeletePatientConfirm] = useState(false);
+    const [isDeletingPatient, setIsDeletingPatient] = useState(false);
 
     // Data States
     const [notes, setNotes] = useState<any[]>([]);
@@ -342,6 +344,20 @@ export default function PatientDetailPage() {
         }
     };
 
+    const handleDeletePatient = async () => {
+        if (!id) return;
+        try {
+            setIsDeletingPatient(true);
+            await patientsApi.delete(id as string);
+            showToast("Patient deleted successfully", "success");
+            router.push('/patients');
+        } catch (err: any) {
+            showToast(err.response?.data?.detail || "Failed to delete patient", "error");
+            setIsDeletingPatient(false);
+        }
+        setShowDeletePatientConfirm(false);
+    };
+
     const handleDownloadReport = async () => {
         try {
             showToast("Generating PDF report...", "info");
@@ -460,13 +476,53 @@ export default function PatientDetailPage() {
                         <Brain size={16} /> Generate Full Encounter
                     </Link>
                     <Link
-                        href={`/notes/new?patientId=${patient.id}`} // Assuming we pass patientId via query param
+                        href={`/notes/new?patientId=${patient.id}`}
                         className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-teal-700 transition-colors shadow-sm text-sm flex items-center gap-2"
                     >
                         + New Clinical Note
                     </Link>
+                    <button
+                        onClick={() => setShowDeletePatientConfirm(true)}
+                        title="Delete patient"
+                        className="bg-white border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 px-3 py-2 rounded-lg shadow-sm text-sm flex items-center gap-2 font-semibold transition-colors"
+                    >
+                        <Trash2 size={15} /> Delete
+                    </button>
                 </div>
             </nav>
+
+            {/* Delete Patient Confirm Modal */}
+            {showDeletePatientConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 border border-slate-200">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="bg-red-100 p-3 rounded-full">
+                                <AlertTriangle size={22} className="text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">Delete Patient</h3>
+                        </div>
+                        <p className="text-slate-600 text-sm mb-2">
+                            You are about to permanently delete <span className="font-bold">{patient.name}</span>.
+                        </p>
+                        <p className="text-slate-400 text-xs mb-6">All associated notes, medications, and clinical data will be archived and removed from your view.</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDeletePatientConfirm(false)}
+                                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition-colors text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeletePatient}
+                                disabled={isDeletingPatient}
+                                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                {isDeletingPatient ? <><RefreshCw size={14} className="animate-spin" /> Deleting...</> : 'Yes, Delete Patient'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
                 {/* Tabs Navigation */}

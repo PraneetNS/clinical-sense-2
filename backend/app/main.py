@@ -132,9 +132,9 @@ async def universal_exception_handler(request, exc):
 @app.get("/api/health")
 def health_check_general():
     return {
-        "status": "healthy",
+        "status": "ready",
         "environment": settings.ENV,
-        "version": "1.0.0"
+        "version": "1.0.1-fixed"
     }
 
 @app.get("/api/health/db")

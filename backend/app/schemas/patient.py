@@ -64,8 +64,20 @@ class PatientResponse(PatientBase):
     total_billing_amount: float = 0.0
     outstanding_billing_amount: float = 0.0
 
+    model_config = {"from_attributes": True}
+
+class PatientMinimalResponse(PatientBase):
+    id: int
+    created_at: datetime
+    
+    total_billing_amount: float = 0.0
+    outstanding_billing_amount: float = 0.0
 
     model_config = {"from_attributes": True}
+
+class PatientDeleteResponse(BaseModel):
+    id: int
+    message: str = "Patient deleted successfully"
 
 from .hospital import (
     PatientCommunicationResponse,

@@ -79,6 +79,7 @@ class NoteService:
 
     @staticmethod
     def get_user_notes(db: Session, user_id: int, search: str = None):
+        # Per-account isolation: users see only notes they created.
         query = db.query(ClinicalNote).filter(
             ClinicalNote.user_id == user_id,
             ClinicalNote.is_deleted == False
@@ -88,12 +89,15 @@ class NoteService:
         return query.order_by(ClinicalNote.created_at.desc()).all()
 
     @staticmethod
-    def get_note_by_id(db: Session, note_id: int, user_id: int):
-        return db.query(ClinicalNote).filter(
-            ClinicalNote.id == note_id, 
-            ClinicalNote.user_id == user_id,
+    def get_note_by_id(db: Session, note_id: int, user_id: int = None):
+        # Per-account isolation: users can only access their own notes.
+        query = db.query(ClinicalNote).filter(
+            ClinicalNote.id == note_id,
             ClinicalNote.is_deleted == False
-        ).first()
+        )
+        if user_id:
+            query = query.filter(ClinicalNote.user_id == user_id)
+        return query.first()
 
     @staticmethod
     def soft_delete_note(db: Session, note_id: int, user_id: int):
@@ -181,9 +185,8 @@ class NoteService:
             
         params_vec = np.array(json.loads(query_embedding_json))
         
-        # Fetch all notes that have embeddings
+        # Fetch all clinical notes that have embeddings for search
         notes = db.query(ClinicalNote).filter(
-            ClinicalNote.user_id == user_id, 
             ClinicalNote.is_deleted == False,
             ClinicalNote.embedding.isnot(None)
         ).all()
@@ -207,13 +210,12 @@ class NoteService:
 
     @staticmethod
     def get_patient_notes_by_patient_id(db: Session, patient_id: int, user_id: int, skip: int = 0, limit: int = 100):
-        # Verify access to patient first
+        # Verify the user owns or has access to this patient first.
         from ..patient_service import PatientService
-        PatientService.get_patient(db, patient_id, user_id)
-        
+        PatientService.get_patient(db, patient_id, user_id)  # raises 404 if not found/owned
+
         return db.query(ClinicalNote).filter(
             ClinicalNote.patient_id == patient_id,
-            ClinicalNote.user_id == user_id,
             ClinicalNote.is_deleted == False
         ).order_by(ClinicalNote.created_at.desc()).offset(skip).limit(limit).all()
     

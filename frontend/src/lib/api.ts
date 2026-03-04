@@ -49,11 +49,12 @@ export const notesApi = {
 };
 
 export const patientsApi = {
-    getAll: (search?: string) => api.get('/patients/', { params: { search } }),
+    getAll: (search?: string) => api.get('/patients/list', { params: search ? { search } : {} }),
     getById: (id: string | number) => api.get(`/patients/${id}`),
     getTimeline: (id: string | number) => api.get(`/patients/${id}/timeline`),
     create: (data: { name: string; mrn: string; date_of_birth?: string }) => api.post('/patients/', data),
     update: (id: string | number, data: any) => api.patch(`/patients/${id}`, data),
+    delete: (id: string | number) => api.delete(`/patients/${id}`),
     getReport: (id: string | number) => api.get(`/patients/${id}/report`),
     downloadReportPdf: (id: string | number) => api.get(`/patients/${id}/report/pdf`, { responseType: 'blob' }),
     toggleStatus: (id: string | number, status: string) => api.patch(`/patients/${id}`, { status }),

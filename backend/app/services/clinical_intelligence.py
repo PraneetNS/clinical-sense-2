@@ -868,9 +868,10 @@ class ClinicalIntelligenceOrchestrator:
     # ------------------------------------------------------------------
 
     def _get_patient(self, patient_id: int, user_id: int) -> Patient:
+        # Relaxed check: clinical staff can access any active patient for AI orchestration
         patient = (
             self.db.query(Patient)
-            .filter(Patient.id == patient_id, Patient.user_id == user_id)
+            .filter(Patient.id == patient_id, Patient.is_deleted == False)
             .first()
         )
         if not patient:

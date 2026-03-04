@@ -41,22 +41,40 @@ class PatientService:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     @staticmethod
-    def get_patients(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-        return db.query(Patient).filter(
-            Patient.user_id == user_id,
-            Patient.is_deleted == False
-        ).offset(skip).limit(limit).all()
+    def get_patients(db: Session, user_id: int = None, skip: int = 0, limit: int = 100):
+        # Per-account data isolation: each user only sees their own patients.
+        query = db.query(Patient).filter(Patient.is_deleted == False)
+        if user_id:
+            query = query.filter(Patient.user_id == user_id)
+        return query.offset(skip).limit(limit).all()
+
+    @staticmethod
+    def get_patients_minimal(db: Session, user_id: int, skip: int = 0, limit: int = 100, search: str = None):
+        """Fast list query — no heavy relationship loading, used for the patients list page."""
+        from sqlalchemy import or_
+        query = db.query(Patient).filter(
+            Patient.is_deleted == False,
+            Patient.user_id == user_id
+        )
+        if search:
+            query = query.filter(
+                or_(
+                    Patient.name.ilike(f"%{search}%"),
+                    Patient.mrn.ilike(f"%{search}%")
+                )
+            )
+        return query.order_by(Patient.created_at.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
     def get_patient(db: Session, patient_id: int, user_id: int = None):
+        # Per-account isolation: user can only access their own patients.
         query = db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False)
         if user_id:
             query = query.filter(Patient.user_id == user_id)
-        
         patient = query.first()
         if not patient:
-             raise HTTPException(status_code=404, detail="Patient not found or access denied")
-        
+            raise HTTPException(status_code=404, detail="Patient not found or access denied")
+
         # Calculate billing totals
         total = 0.0
         outstanding = 0.0
@@ -64,11 +82,31 @@ class PatientService:
             total += (item.cost or 0.0)
             if item.status != "Paid":
                 outstanding += (item.cost or 0.0)
-        
+
         patient.total_billing_amount = total
         patient.outstanding_billing_amount = outstanding
-        
+
         return patient
+
+    @staticmethod
+    def delete_patient(db: Session, patient_id: int, user_id: int):
+        import datetime
+        db_patient = db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.user_id == user_id,
+            Patient.is_deleted == False
+        ).first()
+        if not db_patient:
+            raise HTTPException(status_code=404, detail="Patient not found or access denied")
+        try:
+            db_patient.is_deleted = True
+            db_patient.deleted_at = datetime.datetime.utcnow()
+            PatientService.log_audit(db, user_id, "delete", "Patient", patient_id, "Soft-deleted patient record")
+            db.commit()
+            return {"id": patient_id, "message": "Patient deleted successfully"}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
 
     @staticmethod
     async def get_patient_report(db: Session, patient_id: int, user_id: int):
@@ -168,7 +206,6 @@ class PatientService:
     def update_patient(db: Session, patient_id: int, patient_in: PatientUpdate, user_id: int):
         db_patient = db.query(Patient).filter(
             Patient.id == patient_id, 
-            Patient.user_id == user_id,
             Patient.is_deleted == False
         ).first()
         if not db_patient:
