@@ -14,10 +14,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Clinical Documentation Assistant"
     API_V1_STR: str = "/api/v1"
     
-    # Supabase (Database)
+    # PostgreSQL (Database)
     DATABASE_URL: str
-    SUPABASE_DATABASE_URL: Optional[str] = None
-    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    EXTERNAL_DATABASE_URL: Optional[str] = None
     
     # Firebase (Auth)
     FIREBASE_PROJECT_ID: str
@@ -49,7 +48,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_database_url(cls, v: Optional[str]) -> str:
         if not v:
-            raise ValueError("DATABASE_URL is required (Supabase PostgreSQL)")
+            raise ValueError("DATABASE_URL is required (PostgreSQL)")
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql://", 1)
         return v

@@ -38,7 +38,7 @@ Clinical Sense follows a **Modern Full-Stack Micro-Orchestration** pattern. It s
 # 4. Technology Stack
 - **Frontend**: Next.js 14, TypeScript, Tailwind CSS, Framer Motion (Animations), Lucide React (Icons).
 - **Backend**: FastAPI, SQLAlchemy (ORM), Pydantic (Validation & Serialization), Alembic (Migrations).
-- **Database**: PostgreSQL (Supabase), Redis (Potential for Caching).
+- **Database**: PostgreSQL (Render), Redis (Potential for Caching).
 - **AI/ML**: Groq Cloud LPU inference, Llama-3.3-70b-Versatile.
 - **Auth**: Firebase Identity (Google + Email/Pass).
 - **APIs Used**: Groq API, Firebase Admin SDK.
@@ -80,12 +80,12 @@ This increases accuracy, reduces hallucination, and ensures specialized formatti
 
 # 10. Performance Optimization
 - **LPU Inference**: Groq's Language Processing Units provide inference at >250 tokens/sec.
-- **Connection Pooling**: Use of Supabase's built-in poolers.
+- **Connection Pooling**: Use of PostgreSQL's built-in poolers.
 - **Statelessness**: The API is designed to be fully stateless for easy horizontal scaling via Docker/K8s.
 
 # 11. Scalability
 - **Backend**: Ready for horizontal scaling across multiple instances (ECS/EKS).
-- **DB**: Supabase handles auto-scaling of Postgres.
+- **DB**: PostgreSQL on Render handles high-performance clinical data.
 - **Storage**: Multi-tenant architecture through `user_id` filtering on every query.
 
 # 12. Deployment Strategy
@@ -196,18 +196,18 @@ This increases accuracy, reduces hallucination, and ensures specialized formatti
 
 ## 📈 Scalability (10 Questions)
 1. **How would you handle 10k concurrent users?** Horizontal scaling of the API and using a Redis cache for LLM context.
-2. **Would you stay on Supabase at scale?** Yes, but eventually we might move to a dedicated RDS instance for more control over IOPS.
+2. **Would you stay on Render at scale?** Yes, but eventually we might move to a dedicated RDS instance for more control over IOPS.
 3. **How would you migrate to microservices?** Split the `Clinical Intelligence` into its own service and the `Patient Management` into another.
 4. **How do you handle LLM rate limits?** By implementing a queue system (like Celery/RabbitMQ) for non-instant tasks.
 5. **Can this run on-premise?** Yes, the entire stack can be containerized using Docker Compose.
 6. **How would you implement 'Global Search'?** Implementing Elasticsearch or Algolia for sub-second searching across millions of notes.
-7. **What happens to the uploads folder at scale?** We would move from local storage to AWS S3 or Supabase Storage.
+7. **What happens to the uploads folder at scale?** We would move from local storage to AWS S3 or dedicated Cloud Storage.
 8. **How would you handle real-time collaboration?** Using Y.js or WebSockets to allow multiple doctors to see a patient record simultaneously.
 9. **How do you optimize DB queries?** By using Postgres `EXPLAIN ANALYZE` to find slow queries and adding appropriate indexes.
 10. **How would you handle HIPAA in Europe?** By deploying the stack to a GDPR-compliant AWS region (e.g., Frankfurt).
 
 ## 🛡 Security (10 Questions)
-1. **Is the data encrypted?** Yes, encrypted at rest by Supabase/AWS and in transit via TLS 1.3.
+1. **Is the data encrypted?** Yes, encrypted at rest by Render/Cloud and in transit via TLS 1.3.
 2. **How do you prevent XSS?** By using React/Next.js which automatically escapes all dynamic content.
 3. **What is 'JWT' and how is it used here?** To securely transmit user identity between the Frontend and Backend.
 4. **How do you protect against CSRF?** Next.js and FastAPI have built-in protections when using secure cookies or header-based tokens.

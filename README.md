@@ -145,7 +145,7 @@ Clinical Sense is a full-stack clinical documentation assistant that helps docto
 └──────────────────────────┬──────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────────┐
-│           PostgreSQL (Supabase) + Firebase Auth                  │
+│           PostgreSQL (Render) + Firebase Auth                        │
 │                                                                  │
 │  Tables: users, patients, clinical_notes, ai_encounters,        │
 │  ai_generated_medications, ai_generated_diagnoses,              │
@@ -196,7 +196,7 @@ Raw Clinical Note
 | **FastAPI** | Async REST API framework |
 | **SQLAlchemy** | ORM for PostgreSQL |
 | **Alembic** | Database migrations |
-| **PostgreSQL (Supabase)** | Primary database, hosted |
+| **PostgreSQL (Render)** | Primary database, hosted |
 | **Firebase Admin SDK** | JWT token verification & auth |
 | **Groq API (LLaMA 3.3 70B)** | AI inference for all pipelines |
 | **SlowAPI** | Rate limiting middleware |
@@ -399,7 +399,7 @@ All endpoints require `Authorization: Bearer <firebase_token>` header unless not
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- A Supabase PostgreSQL database
+- A PostgreSQL database (Render recommended)
 - A Firebase project (for authentication)
 - A Groq API key
 
@@ -456,8 +456,7 @@ App runs at: `http://localhost:3006`
 ```env
 ENV=development
 DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
-SUPABASE_DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
-SUPABASE_SERVICE_ROLE_KEY=sb_publishable_...
+EXTERNAL_DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
 
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@your-project.iam.gserviceaccount.com

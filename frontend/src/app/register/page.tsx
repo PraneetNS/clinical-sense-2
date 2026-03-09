@@ -68,30 +68,30 @@ export default function RegisterPage() {
                         <h2 className="text-4xl font-bold mb-8 leading-tight">Join the Network of Modern Clinicians.</h2>
 
                         <div className="space-y-6">
-                            <div className="flex gap-4 items-start">
-                                <div className="bg-teal-500/10 p-2 rounded-xl">
+                            <div className="flex gap-4 items-start translate-x-0 hover:translate-x-1 transition-transform cursor-default group">
+                                <div className="bg-teal-500/10 p-2.5 rounded-xl border border-teal-500/20 group-hover:bg-teal-500/20 transition-colors">
                                     <Shield size={22} className="text-teal-400" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-lg">Secure & Private</h3>
-                                    <p className="text-slate-400 text-sm leading-relaxed">Identity managed by Firebase Auth with HIPAA compliance in mind.</p>
+                                    <h3 className="font-bold text-lg text-slate-100">Secure & Private</h3>
+                                    <p className="text-slate-400 text-sm leading-relaxed">Identity managed by Firebase Auth with HIPAA-compliant standards.</p>
                                 </div>
                             </div>
 
-                            <div className="flex gap-4 items-start">
-                                <div className="bg-blue-500/10 p-2 rounded-xl">
-                                    <Shield size={22} className="text-blue-400" />
+                            <div className="flex gap-4 items-start translate-x-0 hover:translate-x-1 transition-transform cursor-default group">
+                                <div className="bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
+                                    <Lock size={22} className="text-blue-400" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-lg">Supabase Cloud</h3>
-                                    <p className="text-slate-400 text-sm leading-relaxed">Centralized clinical data with real-time durability.</p>
+                                    <h3 className="font-bold text-lg text-slate-100">PostgreSQL Cloud</h3>
+                                    <p className="text-slate-400 text-sm leading-relaxed">Centralized clinical data with high-performance persistence.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="text-xs text-slate-500 font-medium uppercase tracking-widest pt-10">
-                        Powered by Clinical-AI & Firebase
+                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] pt-10 border-t border-slate-800/50">
+                        Operational Intelligence & Security
                     </div>
                 </div>
 

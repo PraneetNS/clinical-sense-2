@@ -4,7 +4,7 @@
 
 - **Backend**: Railway or Render account
 - **Frontend**: Vercel account
-- **Database**: PostgreSQL instance (Railway/Render/Supabase/etc.)
+- **Database**: PostgreSQL instance (Railway/Render/etc.)
 - **API Keys**: At least one AI provider (Groq or OpenAI)
 
 ---
