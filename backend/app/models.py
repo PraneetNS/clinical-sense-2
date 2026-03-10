@@ -772,3 +772,29 @@ class AIUsageMetrics(Base):
 
     encounter = relationship("AIEncounter", back_populates="usage_metrics")
     user = relationship("User")
+
+
+class Prescription(Base):
+    """Printable digital prescriptions for patients."""
+    __tablename__ = "prescriptions"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=True, index=True)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    diagnosis = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    
+    # JSONB structure: [{medicine_name, dosage, frequency, duration, time_of_day: [], special_instruction}]
+    prescription_items = Column(JSONB, nullable=False, default=list)
+    
+    verification_code = Column(PG_UUID(as_uuid=True), default=uuid.uuid4, unique=True)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    # Relationships
+    patient = relationship("Patient", backref="prescriptions")
+    encounter = relationship("AIEncounter", backref="prescriptions")
+    doctor = relationship("User", backref="prescriptions_issued")

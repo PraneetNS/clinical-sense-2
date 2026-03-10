@@ -258,9 +258,17 @@ export default function EncounterGeneratorPage() {
                         </button>
                     )}
                     {encounter?.is_confirmed && (
-                        <span className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 font-black text-sm rounded-xl border border-emerald-200">
-                            <CheckCircle size={16} /> Confirmed
-                        </span>
+                        <>
+                            <Link
+                                href={`/encounter/${encounter.encounter_id}/prescription`}
+                                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-black text-sm rounded-xl shadow-md hover:bg-teal-700 transition-all"
+                            >
+                                <Pill size={16} /> Generate Prescription
+                            </Link>
+                            <span className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 font-black text-sm rounded-xl border border-emerald-200">
+                                <CheckCircle size={16} /> Confirmed
+                            </span>
+                        </>
                     )}
                 </div>
             </header>

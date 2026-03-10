@@ -28,6 +28,7 @@ Clinical Sense is a full-stack clinical documentation assistant that helps docto
 - **Manage patients** — create, view, update, and delete patient records with per-account data isolation
 - **Write and structure clinical notes** — AI converts raw dictation into structured SOAP notes
 - **Generate full AI encounters** — 8 parallel AI pipelines produce medications, diagnoses, billing codes, risk assessments, legal flags, and follow-up recommendations from a single raw note
+- **Digital Prescription Generator** — Create printable, professional prescription slips pre-filled from AI encounter data with doctor review and PDF generation.
 - **Confirm & commit AI data** — all AI output is staged first; clinicians review and confirm before it enters permanent records
 - **Track clinical timelines** — every event (notes, meds, procedures, admissions, tasks) appears on a unified timeline
 - **Generate PDF reports** — complete patient summaries with AI encounter history
@@ -58,6 +59,7 @@ Clinical Sense is a full-stack clinical documentation assistant that helps docto
 | **SBAR Handoff Generator** | Fully formatted Situation-Background-Assessment-Recommendation handoffs |
 | **Workflow Automation Engine** | Stages follow-up tasks from encounter recommendations |
 | **Bias Monitor** | Tracks AI output drift, acceptance rates, and demographic-level consistency |
+| **Prescription Engine** | Generates professional PDF/Print prescriptions with verification codes and doctor review workflow |
 
 ### 🏥 Patient Management
 - Full CRUD with **soft-delete** (records are never physically removed)
@@ -94,7 +96,7 @@ Clinical Sense is a full-stack clinical documentation assistant that helps docto
 ┌─────────────────────────────────────────────────────────────────┐
 │                        FRONTEND (Next.js)                        │
 │  Login → Dashboard → Patients → Patient Detail → Encounter      │
-│  Notes → Admin Governance → Landing Page                        │
+│  Notes → Prescription Generator → Admin Governance              │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTPS REST + WebSocket
 ┌──────────────────────────▼──────────────────────────────────────┐
@@ -181,9 +183,13 @@ Raw Clinical Note
               Clinician clicks "Confirm"
                           │
                           ▼
-              Permanent Clinical Records:
-              Medications, Procedures, Diagnoses,
-              Billing Items, Tasks, Clinical Note
+               Permanent Clinical Records:
+               Medications, Procedures, Diagnoses,
+               Billing Items, Tasks, Clinical Note
+                           │
+                           ▼
+               [Digital Prescription Generator]
+               Review ──▶ Generate PDF ──▶ Print
 ```
 
 ---
@@ -237,6 +243,7 @@ clinical-sense/
 │   │   │       ├── communication.py       # Patient communication summaries
 │   │   │       ├── admin.py               # AI analytics, bias report (admin only)
 │   │   │       ├── hos.py                 # Hospital OS batch endpoints
+│   │   │       ├── prescriptions.py       # Digital Prescription endpoints
 │   │   │       ├── copilot.py             # Copilot assistant endpoint
 │   │   │       └── tasks.py               # Task management
 │   │   ├── core/
@@ -268,6 +275,7 @@ clinical-sense/
 │   │   │   │   └── note_service.py        # Note CRUD, semantic search, risk analysis
 │   │   │   ├── clinical/
 │   │   │   │   └── workflow_service.py    # Trajectory, discharge, patient summary
+│   │   │   ├── prescription_service.py    # PDF generation, pre-fill logic, create/retrieve
 │   │   │   └── clinical_expansion/
 │   │   │       ├── drug_safety.py         # DDI + allergy + renal dosing checks
 │   │   │       ├── lab_interpreter.py     # Lab value parsing + flagging
@@ -375,6 +383,15 @@ All endpoints require `Authorization: Bearer <firebase_token>` header unless not
 | `GET` | `/ai/encounter/{id}/quality-report` | Confidence + compliance report |
 | `POST` | `/ai/encounter/{id}/confirm` | Promote AI data to permanent records |
 | `WS` | `/ai/encounter/ws/{id}` | WebSocket for real-time encounter stream |
+
+### Prescriptions (`/api/v1/prescriptions`)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/prescriptions/create` | Create a new prescription |
+| `GET` | `/prescriptions/{id}` | Get prescription details |
+| `GET` | `/prescriptions/prefill/{encounter_id}` | Get prefilled data from AI encounter |
+| `GET` | `/prescriptions/{id}/pdf` | Generate and download printable PDF |
 
 ### Workflow (`/api/v1/workflow`)
 
@@ -579,6 +596,17 @@ Try these in the **Generate Full Encounter** screen:
 ## Disclaimer
 
 > **Clinical Sense is strictly an assistive tool.** It does NOT provide medical advice or diagnoses. All AI-generated content is staged for review and **must be confirmed by a licensed clinician** before inclusion in the permanent medical record. The system is designed to reduce documentation burden, not replace clinical judgment.
+
+---
+
+## 🔄 Standard Clinical Workflow
+
+1.  **Patient Selection**: Locate patient in the dashboard or search the registry.
+2.  **Encounter Initiation**: Start a new "AI Encounter" and paste raw clinical notes.
+3.  **Parallel Analysis**: The Intelligence Engine runs 8 pipelines + safety checks.
+4.  **Review & Refine**: Doctor reviews AI outputs (SOAP, Meds, Billing) in the staging area.
+5.  **Confirmation**: Clinical data is promoted to permanent records (meds activated, notes saved).
+6.  **Prescription**: Use the "Generate Prescription" tool to print high-fidelity RX slips for the patient.
 
 ---
 

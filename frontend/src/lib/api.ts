@@ -143,6 +143,13 @@ export const adminApi = {
     getBiasReport: () => api.get('/admin/bias-report'),
 };
 
+export const prescriptionApi = {
+    create: (data: any) => api.post('/prescriptions/create', data),
+    getById: (id: string) => api.get(`/prescriptions/${id}`),
+    prefill: (encounterId: string | number) => api.get(`/prescriptions/prefill/${encounterId}`),
+    downloadPdf: (id: string) => api.get(`/prescriptions/${id}/pdf`, { responseType: 'blob' }),
+};
+
 export const authApi = {
     login: (data: any) => {
         const params = new URLSearchParams();
