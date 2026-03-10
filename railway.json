@@ -1,0 +1,34 @@
+{
+    "$schema": "https://railway.app/railway.schema.json",
+    "build": {
+        "builder": "NIXPACKS"
+    },
+    "services": {
+        "backend": {
+            "source": {
+                "directory": "backend"
+            },
+            "build": {
+                "builder": "NIXPACKS"
+            },
+            "deploy": {
+                "startCommand": "bash entrypoint.sh",
+                "healthcheckPath": "/api/health",
+                "restartPolicyType": "ON_FAILURE"
+            }
+        },
+        "frontend": {
+            "source": {
+                "directory": "frontend"
+            },
+            "build": {
+                "builder": "NIXPACKS"
+            },
+            "deploy": {
+                "startCommand": "npm run start",
+                "healthcheckPath": "/",
+                "restartPolicyType": "ON_FAILURE"
+            }
+        }
+    }
+}

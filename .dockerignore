@@ -1,0 +1,17 @@
+node_modules
+.next
+.venv
+venv
+__pycache__
+*.pyc
+.git
+.github
+.vscode
+.idea
+*.log
+backend/backend_errors.log
+backend/seed_error.log
+frontend/.next
+frontend/node_modules
+uploads
+backend/uploads
