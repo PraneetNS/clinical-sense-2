@@ -23,7 +23,7 @@ def verify_token_and_get_user(db: Session, token_str: str) -> models.User:
     
     try:
         # Verify Firebase ID Token
-        decoded_token = auth.verify_id_token(token_str)
+        decoded_token = auth.verify_id_token(token_str, clock_skew_seconds=60)
         email = decoded_token.get("email")
         firebase_uid = decoded_token.get("uid")
         

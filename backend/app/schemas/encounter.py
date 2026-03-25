@@ -132,6 +132,9 @@ class EncounterResponse(BaseModel):
     # Mandatory watermark for AI-generated content
     ai_watermark: str = "AI-GENERATED DRAFT ⚠️ — Requires licensed clinician review."
 
+    # Pipeline statuses (per-pipeline health)
+    pipeline_statuses: List[Dict[str, Any]] = []
+
     created_at: datetime
 
     model_config = {"from_attributes": True}

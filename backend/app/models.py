@@ -513,6 +513,9 @@ class AIEncounter(Base):
     # Medico-legal
     legal_flags = Column(Text, nullable=True)                # JSON list
 
+    # Pipeline statuses (JSON list of {pipeline_name, status, error, latency_ms})
+    pipeline_statuses = Column(Text, nullable=True)
+
     # Status flags
     status = Column(String, default="pending")               # pending / ready / confirmed / rejected
     is_confirmed = Column(Boolean, default=False)
@@ -798,3 +801,16 @@ class Prescription(Base):
     patient = relationship("Patient", backref="prescriptions")
     encounter = relationship("AIEncounter", backref="prescriptions")
     doctor = relationship("User", backref="prescriptions_issued")
+
+class PatientPortalLink(Base):
+    __tablename__ = "patient_portal_links"
+    id = Column(Integer, primary_key=True, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    accessed_at = Column(DateTime, nullable=True)
+    
+    encounter = relationship("AIEncounter", foreign_keys=[encounter_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { encounterApi, patientsApi, getErrorMessage } from '@/lib/api';
+import { encounterApi, patientsApi, aiApi, getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
@@ -11,7 +11,7 @@ import {
     Pill, Stethoscope, CreditCard, Calendar, Shield,
     Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle,
     CheckSquare, FileText, Activity, Link2, BookOpen, Microscope,
-    Repeat, BrainCircuit, Lock, ExternalLink
+    Repeat, BrainCircuit, Lock, ExternalLink, Mic, Square, Sparkles, Send
 } from 'lucide-react';
 
 /* ─────────────────── Types ─────────────────── */
@@ -37,6 +37,7 @@ interface QualityReport {
     hallucination_flags: string[];
     missing_critical_fields: string[];
 }
+interface PipelineStatus { pipeline_name: string; status: 'success' | 'failed' | 'partial'; data: any; error: string | null; latency_ms: number; }
 interface Encounter {
     encounter_id: number; patient_id: number; status: string; is_confirmed: boolean;
     encounter_date: string; chief_complaint: string;
@@ -46,6 +47,7 @@ interface Encounter {
     risk_score: string; risk_flags: string[]; legal_flags: string[];
     admission_required: boolean; icu_required: boolean; follow_up_days?: number;
     case_status: string; billing_complexity: string; ai_watermark: string; created_at: string;
+    pipeline_statuses?: PipelineStatus[];
 }
 
 /* ─────────────────── Helpers ─────────────────── */
@@ -79,7 +81,14 @@ function ConfidenceBar({ score }: { score: number }) {
     );
 }
 
-function Section({ title, icon, children, badge }: { title: string; icon: React.ReactNode; children: React.ReactNode; badge?: number }) {
+function PipelineStatusBadge({ status }: { status?: PipelineStatus }) {
+    if (!status) return null;
+    if (status.status === 'success') return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black"><CheckCircle size={10} /> {status.latency_ms}ms</span>;
+    if (status.status === 'partial') return <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black"><AlertTriangle size={10} /> PARTIAL</span>;
+    return <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-black"><AlertCircle size={10} /> FAILED</span>;
+}
+
+function Section({ title, icon, children, badge, pipelineStatus }: { title: string; icon: React.ReactNode; children: React.ReactNode; badge?: number; pipelineStatus?: PipelineStatus }) {
     const [open, setOpen] = useState(true);
     return (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -90,6 +99,7 @@ function Section({ title, icon, children, badge }: { title: string; icon: React.
                     {badge !== undefined && badge > 0 && (
                         <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-[10px] font-black">{badge}</span>
                     )}
+                    {pipelineStatus && <PipelineStatusBadge status={pipelineStatus} />}
                 </div>
                 {open ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
             </button>
@@ -116,6 +126,19 @@ export default function EncounterGeneratorPage() {
     const [progress, setProgress] = useState<string[]>([]);
     const [wsStatus, setWsStatus] = useState<'idle' | 'connecting' | 'connected' | 'done'>('idle');
     const wsRef = useRef<WebSocket | null>(null);
+
+    // Voice Capture State
+    const [isRecording, setIsRecording] = useState(false);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const chunksRef = useRef<Blob[]>([]);
+
+    // DDx Challenge State
+    const [challengeResults, setChallengeResults] = useState<Record<number, any>>({});
+    const [challengingId, setChallengingId] = useState<number | null>(null);
+
+    // Context & Actions
+    const [sendingPortalLink, setSendingPortalLink] = useState(false);
 
     /* load patient */
     useEffect(() => {
@@ -202,6 +225,53 @@ export default function EncounterGeneratorPage() {
         }
     };
 
+    /* ── Voice Capture ── */
+    const handleToggleRecording = async () => {
+        if (isRecording) {
+            if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+            if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+            setIsRecording(false);
+            showToast('Voice transcription stopped.', 'success');
+        } else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                streamRef.current = stream;
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorderRef.current = mediaRecorder;
+                chunksRef.current = [];
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunksRef.current.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                    chunksRef.current = [];
+                    const fd = new FormData();
+                    fd.append('file', blob, 'audio.webm');
+                    
+                    try {
+                        const res = await aiApi.transcribe(fd);
+                        if (res.data.text) {
+                            setRawNote(prev => prev + (prev ? ' ' : '') + res.data.text);
+                        }
+                    } catch (err) {
+                        console.error('Transcription error', err);
+                        showToast('Failed to transcribe audio chunk.', 'error');
+                    }
+                };
+
+                // Request data every 5 seconds for near real-time appending
+                mediaRecorder.start(5000);
+                setIsRecording(true);
+                showToast('Ambient voice listening...', 'success');
+            } catch (err) {
+                console.error("Mic error:", err);
+                showToast('Microphone access denied or unavailable.', 'error');
+            }
+        }
+    };
+
     /* ── Confirm encounter ── */
     const handleConfirm = async () => {
         if (!encounter) return;
@@ -219,6 +289,39 @@ export default function EncounterGeneratorPage() {
             showToast(getErrorMessage(err) || 'Confirmation failed', 'error');
         } finally {
             setConfirming(false);
+        }
+    };
+
+    /* ── DDx Challenge ── */
+    const handleChallengeDiagnosis = async (d: Diagnosis) => {
+        if (!encounter) return;
+        setChallengingId(d.id);
+        try {
+            const res = await aiApi.challenge(encounter.encounter_id, {
+                diagnosis_name: d.condition_name,
+                icd_code: d.icd10_code || ''
+            });
+            setChallengeResults(prev => ({ ...prev, [d.id]: res.data }));
+            showToast('Challenge analysis complete.', 'success');
+        } catch (err: any) {
+            showToast(`Challenge failed: ${getErrorMessage(err)}`, 'error');
+        } finally {
+            setChallengingId(null);
+        }
+    };
+
+    /* ── Portal Link ── */
+    const handleSendPortalLink = async () => {
+        if (!encounter) return;
+        setSendingPortalLink(true);
+        try {
+            const res = await encounterApi.sendPortalLink(encounter.encounter_id);
+            showToast(`Portal Link Sent! Note: Copy the link from the console if email is not enabled.`, 'success');
+            console.log('Secure portal link: ', res.data.link);
+        } catch (err: any) {
+            showToast(`Failed to generate portal link: ${getErrorMessage(err)}`, 'error');
+        } finally {
+            setSendingPortalLink(false);
         }
     };
 
@@ -248,17 +351,32 @@ export default function EncounterGeneratorPage() {
                         </span>
                     )}
                     {encounter && !encounter.is_confirmed && (
-                        <button
-                            onClick={handleConfirm}
-                            disabled={confirming}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-black text-sm rounded-xl shadow-lg shadow-teal-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60"
-                        >
-                            {confirming ? <Loader2 size={16} className="animate-spin" /> : <CheckSquare size={16} />}
-                            Confirm & Save to Records
-                        </button>
+                        <>
+                            {encounter.pipeline_statuses?.some(p => p.status === 'failed' && ['RISK_ANALYSIS', 'MEDICO_LEGAL'].includes(p.pipeline_name)) && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold border border-red-200">
+                                    <AlertTriangle size={14} /> Risk Analysis failed — manual review required.
+                                </div>
+                            )}
+                            <button
+                                onClick={handleConfirm}
+                                disabled={confirming || encounter.pipeline_statuses?.some(p => p.status === 'failed' && ['RISK_ANALYSIS', 'MEDICO_LEGAL'].includes(p.pipeline_name))}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-black text-sm rounded-xl shadow-lg shadow-teal-600/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {confirming ? <Loader2 size={16} className="animate-spin" /> : <CheckSquare size={16} />}
+                                Confirm & Save to Records
+                            </button>
+                        </>
                     )}
                     {encounter?.is_confirmed && (
                         <>
+                            <button
+                                onClick={handleSendPortalLink}
+                                disabled={sendingPortalLink}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 font-black text-sm rounded-xl border border-indigo-200 hover:bg-indigo-100 transition-all disabled:opacity-50"
+                            >
+                                {sendingPortalLink ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                Send Portal Summary
+                            </button>
                             <Link
                                 href={`/encounter/${encounter.encounter_id}/prescription`}
                                 className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-black text-sm rounded-xl shadow-md hover:bg-teal-700 transition-all"
@@ -277,8 +395,27 @@ export default function EncounterGeneratorPage() {
                 {/* Left panel — input */}
                 <div className="space-y-6">
                     {/* Note input */}
-                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] block mb-3">Raw Clinical Note</label>
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 relative overflow-hidden">
+                        {isRecording && (
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-teal-400 via-cyan-400 to-teal-400 bg-[length:200%_auto] animate-[pulse_2s_linear_infinite]" />
+                        )}
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Raw Clinical Note</label>
+                            <button
+                                onClick={handleToggleRecording}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                                    isRecording 
+                                        ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' 
+                                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                }`}
+                            >
+                                {isRecording ? (
+                                    <><Square size={12} fill="currentColor" /> Stop Listening</>
+                                ) : (
+                                    <><Mic size={14} /> Start Ambient Capture</>
+                                )}
+                            </button>
+                        </div>
                         <textarea
                             value={rawNote}
                             onChange={e => setRawNote(e.target.value)}
@@ -372,7 +509,11 @@ export default function EncounterGeneratorPage() {
 
                         {/* SOAP Note */}
                         {Object.keys(encounter.soap).length > 0 && (
-                            <Section title="SOAP Note" icon={<FileText size={16} />}>
+                            <Section 
+                                title="SOAP Note" 
+                                icon={<FileText size={16} />}
+                                pipelineStatus={encounter.pipeline_statuses?.find(p => p.pipeline_name === 'SOAP')}
+                            >
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                                     {Object.entries(encounter.soap).map(([k, v]) => (
                                         <div key={k} className="bg-slate-50 rounded-xl p-4">
@@ -385,7 +526,12 @@ export default function EncounterGeneratorPage() {
                         )}
 
                         {/* Medications */}
-                        <Section title="AI Extracted Medications" icon={<Pill size={16} />} badge={encounter.medications.length}>
+                        <Section 
+                            title="AI Extracted Medications" 
+                            icon={<Pill size={16} />} 
+                            badge={encounter.medications.length}
+                            pipelineStatus={encounter.pipeline_statuses?.find(p => p.pipeline_name === 'MEDICATION_STRUCTURING')}
+                        >
                             {encounter.medications.length === 0 ? <p className="text-slate-400 italic text-sm mt-3">No medications extracted.</p> : (
                                 <div className="space-y-3 mt-3">
                                     {encounter.medications.map(med => (
@@ -410,7 +556,12 @@ export default function EncounterGeneratorPage() {
                         </Section>
 
                         {/* Diagnoses */}
-                        <Section title="ICD-10 Diagnosis Coding" icon={<Stethoscope size={16} />} badge={encounter.diagnoses.length}>
+                        <Section 
+                            title="ICD-10 Diagnosis Coding" 
+                            icon={<Stethoscope size={16} />} 
+                            badge={encounter.diagnoses.length}
+                            pipelineStatus={encounter.pipeline_statuses?.find(p => p.pipeline_name === 'DIAGNOSIS_CODING')}
+                        >
                             {encounter.diagnoses.length === 0 ? <p className="text-slate-400 italic text-sm mt-3">No diagnoses inferred.</p> : (
                                 <div className="space-y-3 mt-3">
                                     {encounter.diagnoses.map(d => (
@@ -424,8 +575,59 @@ export default function EncounterGeneratorPage() {
                                                     {d.icd10_code && <div className="text-xs font-mono text-blue-600 mt-0.5">{d.icd10_code}</div>}
                                                     {d.reasoning && <div className="text-xs text-slate-500 mt-1 italic">{d.reasoning}</div>}
                                                 </div>
+                                                <button
+                                                    onClick={() => handleChallengeDiagnosis(d)}
+                                                    disabled={challengingId === d.id}
+                                                    className="px-3 py-1 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-black hover:bg-indigo-100 transition-colors flex items-center gap-1"
+                                                >
+                                                    {challengingId === d.id ? <Loader2 size={12} className="animate-spin" /> : <BrainCircuit size={12} />}
+                                                    Challenge AI
+                                                </button>
                                             </div>
                                             <ConfidenceBar score={d.confidence_score} />
+
+                                            {/* Challenge Results Accordion */}
+                                            {challengeResults[d.id] && (
+                                                <div className="mt-4 pt-4 border-t border-slate-100">
+                                                    <div className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-3 flex items-center gap-2"><Sparkles size={12} /> DDx Challenge Results</div>
+                                                    
+                                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                                        <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                                                            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-2">Supporting Evidence</div>
+                                                            <ul className="space-y-1">
+                                                                {challengeResults[d.id].supports?.map((s: any, idx: number) => (
+                                                                    <li key={idx} className="text-xs text-emerald-900 flex items-start gap-1"><span className="text-emerald-500 mt-0.5">•</span> <span>{s.finding} <span className="opacity-50">({s.weight})</span></span></li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                        <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                                                            <div className="text-[10px] font-black uppercase tracking-widest text-red-700 mb-2">Evidence Against</div>
+                                                            <ul className="space-y-1">
+                                                                {challengeResults[d.id].against?.map((a: any, idx: number) => (
+                                                                    <li key={idx} className="text-xs text-red-900 flex items-start gap-1"><span className="text-red-500 mt-0.5">•</span> <span>{a.finding} <span className="opacity-50">({a.weight})</span></span></li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+
+                                                    {(challengeResults[d.id].alternative_diagnoses?.length > 0 || challengeResults[d.id].key_tests_to_differentiate?.length > 0) && (
+                                                        <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                                                            {challengeResults[d.id].alternative_diagnoses?.length > 0 && (
+                                                                <div className="mb-2">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 block mb-1">Alternatives to Consider:</span>
+                                                                    <div className="text-xs text-indigo-900 font-medium">{challengeResults[d.id].alternative_diagnoses.join(', ')}</div>
+                                                                </div>
+                                                            )}
+                                                            {challengeResults[d.id].key_tests_to_differentiate?.length > 0 && (
+                                                                <div>
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 block mb-1">Suggested Tests:</span>
+                                                                    <div className="text-xs text-indigo-900 italic">{challengeResults[d.id].key_tests_to_differentiate.join(', ')}</div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -433,7 +635,11 @@ export default function EncounterGeneratorPage() {
                         </Section>
 
                         {/* Procedures */}
-                        <Section title="AI Extracted Procedures" icon={<Activity size={16} />} badge={encounter.procedures?.length}>
+                        <Section 
+                            title="AI Extracted Procedures" 
+                            icon={<Activity size={16} />} 
+                            badge={encounter.procedures?.length}
+                        >
                             {!encounter.procedures || encounter.procedures.length === 0 ? <p className="text-slate-400 italic text-sm mt-3">No procedures extracted.</p> : (
                                 <div className="space-y-3 mt-3">
                                     {encounter.procedures.map(proc => (

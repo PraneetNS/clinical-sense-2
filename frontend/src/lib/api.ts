@@ -110,19 +110,6 @@ export const clinicalApi = {
     deleteBilling: (id: string | number) => api.delete(`/patients/billing/${id}`),
 };
 
-export const aiApi = {
-    differential: (data: any) => api.post('/ai/differential', data),
-    riskAnalysis: (data: any) => api.post('/ai/risk_analysis', data),
-    medicoLegal: (data: any) => api.post('/ai/medico_legal', data),
-};
-
-export const workflowApi = {
-    getDashboard: (patientId: string | number) => api.get(`/workflow/patients/${patientId}/workflow-dashboard`),
-    triggerAnalysis: (noteId: string | number) => api.post(`/workflow/notes/${noteId}/analyze`),
-    checkDischarge: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/discharge-check`),
-    checkTrajectory: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/trajectory-check`),
-};
-
 export const encounterApi = {
     generate: (data: { patient_id: number; raw_note: string; encounter_date?: string; evidence_mode_enabled?: boolean }) =>
         api.post('/ai/generate_full_encounter', data),
@@ -130,12 +117,30 @@ export const encounterApi = {
     get: (encounterId: string | number) => api.get(`/ai/encounter/${encounterId}`),
     getQualityReport: (encounterId: string | number) => api.get(`/ai/encounter/${encounterId}/quality-report`),
     confirm: (encounterId: string | number) => api.post(`/ai/encounter/${encounterId}/confirm`),
+    sendPortalLink: (encounterId: string | number) => api.post(`/ai/encounters/${encounterId}/send-portal-link`),
     wsUrl: (encounterId: string | number): string => {
         const base = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1')
             .replace('http://', 'ws://')
             .replace('https://', 'wss://');
         return `${base}/ai/encounter/ws/${encounterId}`;
     },
+};
+
+export const aiApi = {
+    differential: (data: any) => api.post('/ai/differential', data),
+    riskAnalysis: (data: any) => api.post('/ai/risk_analysis', data),
+    medicoLegal: (data: any) => api.post('/ai/medico_legal', data),
+    transcribe: (formData: FormData) => api.post('/ai/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    challenge: (encounterId: string | number, data: { diagnosis_name: string; icd_code: string }) =>
+        api.post(`/ai/differential/${encounterId}/challenge`, data),
+};
+
+export const workflowApi = {
+    getDashboard: (patientId: string | number) => api.get(`/workflow/patients/${patientId}/workflow-dashboard`),
+    triggerAnalysis: (noteId: string | number) => api.post(`/workflow/notes/${noteId}/analyze`),
+    checkDischarge: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/discharge-check`),
+    checkTrajectory: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/trajectory-check`),
+    getShiftBriefing: () => api.get('/workflow/shift-briefing'),
 };
 
 export const adminApi = {

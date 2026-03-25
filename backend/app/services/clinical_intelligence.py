@@ -18,7 +18,7 @@ import json
 import time
 import datetime
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Literal
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -86,6 +86,18 @@ def _clamp_float(val: Any, lo: float = 0.0, hi: float = 1.0) -> float:
         return 0.5
 
 
+class PipelineResult(TypedDict):
+    """Typed result from a single AI pipeline execution."""
+    pipeline_name: str
+    status: Literal["success", "failed", "partial"]
+    data: Optional[Dict]
+    error: Optional[str]
+    latency_ms: float
+
+
+CRITICAL_PIPELINES = {"RISK_ANALYSIS", "MEDICO_LEGAL"}
+
+
 # ---------------------------------------------------------------------------
 # Core Orchestrator
 # ---------------------------------------------------------------------------
@@ -135,40 +147,67 @@ class ClinicalIntelligenceOrchestrator:
         # Build patient context for pipelines
         patient_ctx = self._build_patient_context(patient)
 
-        # --------------- Parallel AI pipelines ---------------
-        (
-            encounter_data,
-            soap_data,
-            med_data,
-            diag_data,
-            billing_data,
-            case_data,
-            risk_data,
-            legal_data,
-        ) = await asyncio.gather(
-            self._run_pipeline("ENCOUNTER_EXTRACTOR", request.raw_note, "encounter"),
-            self._run_pipeline("SOAP", request.raw_note, "soap"),
-            self._run_pipeline("MEDICATION_STRUCTURING", request.raw_note, "medications"),
-            self._run_pipeline_with_context(
-                "DIAGNOSIS_CODING",
-                request.raw_note,
-                patient_ctx,
-                "diagnoses",
-            ),
-            self._run_pipeline_with_context(
-                "BILLING_INTELLIGENCE",
-                json.dumps({
-                    "raw_note": request.raw_note,
-                    "patient_context": patient_ctx,
-                }),
-                None,
-                "billing",
-            ),
-            self._run_pipeline("CASE_INTELLIGENCE", request.raw_note, "case"),
-            self._run_pipeline("RISK_ANALYSIS", request.raw_note, "risk"),
-            self._run_pipeline("MEDICO_LEGAL", request.raw_note, "legal"),
-            return_exceptions=False,
+        # --------------- Parallel AI pipelines (resilient) ---------------
+        pipeline_configs = [
+            ("ENCOUNTER_EXTRACTOR", "encounter", lambda: self._run_pipeline("ENCOUNTER_EXTRACTOR", request.raw_note, "encounter")),
+            ("SOAP", "soap", lambda: self._run_pipeline("SOAP", request.raw_note, "soap")),
+            ("MEDICATION_STRUCTURING", "medications", lambda: self._run_pipeline("MEDICATION_STRUCTURING", request.raw_note, "medications")),
+            ("DIAGNOSIS_CODING", "diagnoses", lambda: self._run_pipeline_with_context("DIAGNOSIS_CODING", request.raw_note, patient_ctx, "diagnoses")),
+            ("BILLING_INTELLIGENCE", "billing", lambda: self._run_pipeline_with_context("BILLING_INTELLIGENCE", json.dumps({"raw_note": request.raw_note, "patient_context": patient_ctx}), None, "billing")),
+            ("CASE_INTELLIGENCE", "case", lambda: self._run_pipeline("CASE_INTELLIGENCE", request.raw_note, "case")),
+            ("RISK_ANALYSIS", "risk", lambda: self._run_pipeline("RISK_ANALYSIS", request.raw_note, "risk")),
+            ("MEDICO_LEGAL", "legal", lambda: self._run_pipeline("MEDICO_LEGAL", request.raw_note, "legal")),
+        ]
+
+        async def _run_pipeline_safe(name: str, label: str, coro_fn) -> PipelineResult:
+            t0 = time.time()
+            try:
+                data = await coro_fn()
+                latency = round((time.time() - t0) * 1000, 1)
+                has_data = isinstance(data, dict) and len(data) > 0
+                return PipelineResult(
+                    pipeline_name=name,
+                    status="success" if has_data else "partial",
+                    data=data,
+                    error=None,
+                    latency_ms=latency,
+                )
+            except Exception as e:
+                latency = round((time.time() - t0) * 1000, 1)
+                logger.error(f"Pipeline '{label}' ({name}) failed: {e}")
+                return PipelineResult(
+                    pipeline_name=name,
+                    status="failed",
+                    data={},
+                    error=str(e),
+                    latency_ms=latency,
+                )
+
+        pipeline_results: List[PipelineResult] = await asyncio.gather(
+            *[_run_pipeline_safe(name, label, fn) for name, label, fn in pipeline_configs]
         )
+
+        # Build pipeline_statuses list and extract data by label
+        pipeline_statuses = []
+        _pipeline_data = {}
+        for cfg, result in zip(pipeline_configs, pipeline_results):
+            name, label, _ = cfg
+            pipeline_statuses.append({
+                "pipeline_name": result["pipeline_name"],
+                "status": result["status"],
+                "error": result["error"],
+                "latency_ms": result["latency_ms"],
+            })
+            _pipeline_data[label] = result["data"] or {}
+
+        encounter_data = _pipeline_data["encounter"]
+        soap_data = _pipeline_data["soap"]
+        med_data = _pipeline_data["medications"]
+        diag_data = _pipeline_data["diagnoses"]
+        billing_data = _pipeline_data["billing"]
+        case_data = _pipeline_data["case"]
+        risk_data = _pipeline_data["risk"]
+        legal_data = _pipeline_data["legal"]
 
         # --------------- 2. Quality & Safety Evaluation ---------------
         # Model version for observability
@@ -180,6 +219,7 @@ class ClinicalIntelligenceOrchestrator:
             diag_data, billing_data, case_data,
             risk_data, legal_data,
         )
+
 
         # Run deterministic clinical rule engine (safe, <5ms)
         safety_results = evaluate_clinical_rules(
@@ -278,20 +318,22 @@ class ClinicalIntelligenceOrchestrator:
             quality_data=quality_data,
             safety_results=safety_results,
             token_usage_total=sum(self._token_log.values()) if self._token_log else 0,
-            expansion_data=expansion_data
+            expansion_data=expansion_data,
+            pipeline_statuses=pipeline_statuses,
         )
 
         logger.info(
-            "Clinical intelligence encounter generated (v2 context)",
+            "Clinical intelligence encounter generated (v3 resilient)",
             extra={"metadata": {
                 "encounter_id": encounter.id,
                 "latency_ms": total_latency_ms,
                 "evidence_mode": request.evidence_mode_enabled,
                 "risk_level": quality_data.get("risk_level", "HIGH"),
+                "pipeline_failures": [p["pipeline_name"] for p in pipeline_statuses if p["status"] == "failed"],
             }},
         )
 
-        return self._build_response(encounter, prelim_merged)
+        return self._build_response(encounter, prelim_merged, pipeline_statuses)
 
     # ------------------------------------------------------------------
     # Encounter confirmation (doctor clicks "Confirm & Save")
@@ -617,10 +659,11 @@ class ClinicalIntelligenceOrchestrator:
         safety_results: Dict,
         token_usage_total: int,
         expansion_data: Optional[Dict] = None,
+        pipeline_statuses: Optional[List[Dict]] = None,
     ) -> AIEncounter:
         """
         Persists the full encounter, related items, quality report, and usage metrics.
-        Now includes expansion data for v2.
+        Now includes expansion data for v2 and pipeline statuses for v3.
         """
         try:
             # Root encounter
@@ -639,6 +682,7 @@ class ClinicalIntelligenceOrchestrator:
                 risk_score=merged.get("risk_score", "Low"),
                 risk_flags=json.dumps(merged.get("risk_flags", [])),
                 legal_flags=json.dumps(merged.get("legal_flags", [])),
+                pipeline_statuses=json.dumps(pipeline_statuses or []),
                 status="ready",
                 token_usage=json.dumps(self._token_log),
                 model_version=model_version,
@@ -772,7 +816,7 @@ class ClinicalIntelligenceOrchestrator:
     # Internal — Response builder
     # ------------------------------------------------------------------
 
-    def _build_response(self, encounter: AIEncounter, merged: Dict) -> EncounterResponse:
+    def _build_response(self, encounter: AIEncounter, merged: Dict, pipeline_statuses: Optional[List[Dict]] = None) -> EncounterResponse:
         """Converts DB encounter object + merged pipeline dict into a response schema."""
         return EncounterResponse(
             encounter_id=encounter.id,
@@ -860,6 +904,7 @@ class ClinicalIntelligenceOrchestrator:
             case_status=encounter.case_status,
             billing_complexity=encounter.billing_complexity or "medium",
             ai_watermark="AI-GENERATED DRAFT ⚠️ — Requires licensed clinician review and confirmation before any clinical action.",
+            pipeline_statuses=pipeline_statuses or _safe_json_loads(encounter.pipeline_statuses, []),
             created_at=encounter.created_at,
         )
 

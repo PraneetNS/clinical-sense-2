@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { notesApi } from '@/lib/api';
-import { FileText, Plus, Clock, ChevronRight, Search, LogOut, Trash2, User } from 'lucide-react';
+import { FileText, Plus, Clock, ChevronRight, Search, LogOut, Trash2, User, Activity } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
@@ -64,6 +64,9 @@ export default function DashboardPage() {
                     </Link>
                     <Link href="/patients" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
                         <User size={20} /> Patients
+                    </Link>
+                    <Link href="/shift-briefing" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
+                        <Activity size={20} /> Shift Briefing
                     </Link>
                     <Link href="/notes/new" className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
                         <Plus size={20} /> Create New
