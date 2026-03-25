@@ -4,6 +4,10 @@ const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL,
 });
 
+const publicApi = axios.create({
+    baseURL: process.env.NEXT_PUBLIC_API_URL,
+});
+
 api.interceptors.request.use((config: any) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (token) {
@@ -58,6 +62,8 @@ export const patientsApi = {
     getReport: (id: string | number) => api.get(`/patients/${id}/report`),
     downloadReportPdf: (id: string | number) => api.get(`/patients/${id}/report/pdf`, { responseType: 'blob' }),
     toggleStatus: (id: string | number, status: string) => api.patch(`/patients/${id}`, { status }),
+    getAlerts: (id: string | number) => api.get(`/patients/${id}/alerts`),
+    acknowledgeAlert: (id: string | number) => api.post(`/patients/alerts/${id}/acknowledge`),
 };
 
 export const clinicalApi = {
@@ -141,6 +147,10 @@ export const workflowApi = {
     checkDischarge: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/discharge-check`),
     checkTrajectory: (patientId: string | number) => api.post(`/workflow/patients/${patientId}/trajectory-check`),
     getShiftBriefing: () => api.get('/workflow/shift-briefing'),
+};
+
+export const portalApi = {
+    getSummary: (token: string) => publicApi.get(`/ai/portal/${token}`),
 };
 
 export const adminApi = {

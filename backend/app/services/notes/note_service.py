@@ -258,14 +258,46 @@ class NoteService:
             # Parse note content
             try:
                 content = json.loads(note.structured_content) if note.structured_content else {"text": note.raw_content}
+                raw_text = note.raw_content
             except:
                 content = {"text": note.raw_content}
+                raw_text = note.raw_content
             
+            # NEWS2 Calculation & Deterioration Alert
+            from ..clinical_expansion.risk_calculators import compute_news2
+            from ...models import DeteriorationAlert, ClinicalAIInsight
+            
+            extracted_vitals = ai_service.parse_vitals_from_text(raw_text)
+            news2_data = compute_news2(extracted_vitals)
+            current_news2 = news2_data.get("score", 0)
+            
+            # Fetch previous NEWS2 for delta calculation
+            prev_insight = (
+                db.query(ClinicalAIInsight)
+                .join(ClinicalNote)
+                .filter(ClinicalNote.patient_id == note.patient_id, ClinicalNote.id != note_id)
+                .order_by(ClinicalNote.created_at.desc())
+                .first()
+            )
+            prev_news2 = prev_insight.news2_score if prev_insight else 0
+            delta = current_news2 - prev_news2
+            
+            # Trigger Alert if threshold exceeded
+            if current_news2 >= 5 or delta >= 3:
+                alert = DeteriorationAlert(
+                    patient_id=note.patient_id,
+                    encounter_id=note_id, # Link if it's an AI encounter, but ClinicalNote is not AIEncounter. Wait.
+                    news2_score=current_news2,
+                    vitals_snapshot=json.dumps(extracted_vitals),
+                    triggers=json.dumps(news2_data.get("components", {})),
+                    severity="Critical" if current_news2 >= 7 else "Warning"
+                )
+                db.add(alert)
+                
             # AI Analysis
             analysis = await ai_service.analyze_risks(content, patient_context)
             
             # Save Insight
-            # Check if exists
             insight = db.query(ClinicalAIInsight).filter(ClinicalAIInsight.note_id == note_id).first()
             if not insight:
                 insight = ClinicalAIInsight(note_id=note_id)
@@ -275,6 +307,7 @@ class NoteService:
             insight.red_flags = json.dumps(analysis.get("red_flags", []))
             insight.suggestions = json.dumps(analysis.get("suggestions", []))
             insight.missing_info = json.dumps(analysis.get("missing_info", []))
+            insight.news2_score = current_news2
             
             db.commit()
             

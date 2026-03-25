@@ -35,7 +35,8 @@ def calculate_structured_risks(
         elif age > 65: readmission_risk_score += 15.0
         
     if med_count > 10: readmission_risk_score += 20.0
-    if vitals.get("blood_pressure_sys") and vitals.get("blood_pressure_sys") > 160: 
+    sbp = vitals.get("blood_pressure_sys")
+    if sbp is not None and sbp > 160: 
         readmission_risk_score += 10.0
     
     # Check for known high-risk conditions in history
@@ -71,3 +72,63 @@ def calculate_structured_risks(
         "fall_risk_score": fall_risk_score,
         "readmission_risk_score": readmission_risk_score
     }
+
+def compute_news2(vitals: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Computes NEWS2 early warning score from vitals.
+    Returns {score, level: low|medium|high|critical}
+    """
+    score = 0
+    
+    # 1. Respiration Rate
+    rr = vitals.get("resp_rate")
+    if rr is not None:
+        if rr <= 8 or rr >= 25: score += 3
+        elif 21 <= rr <= 24: score += 2
+        elif 9 <= rr <= 11: score += 1
+        
+    # 2. SpO2 (Scale 1)
+    spo2 = vitals.get("spo2")
+    if spo2 is not None:
+        if spo2 <= 91: score += 3
+        elif 92 <= spo2 <= 93: score += 2
+        elif 94 <= spo2 <= 95: score += 1
+        
+    # 3. Air or Oxygen
+    oxygen = vitals.get("oxygen") # Boolean or string "Air"/"Oxygen"
+    if oxygen and oxygen != "Air":
+        score += 2
+        
+    # 4. Systolic BP
+    sbp = vitals.get("blood_pressure_sys")
+    if sbp is not None:
+        if sbp <= 90 or sbp >= 220: score += 3
+        elif 91 <= sbp <= 100: score += 2
+        elif 101 <= sbp <= 110: score += 1
+        
+    # 5. Pulse (Heart Rate)
+    hr = vitals.get("heart_rate")
+    if hr is not None:
+        if hr <= 40 or hr >= 131: score += 3
+        elif 111 <= hr <= 130: score += 2
+        elif 41 <= hr <= 50 or 91 <= hr <= 110: score += 1
+        
+    # 6. Consciousness (Alert, Voice, Pain, Unresponsive)
+    avpu = vitals.get("consciousness", "Alert")
+    if avpu != "Alert":
+        score += 3
+        
+    # 7. Temperature
+    temp = vitals.get("temp_c")
+    if temp is not None:
+        if temp <= 35.0: score += 3
+        elif temp >= 39.1: score += 2
+        elif 35.1 <= temp <= 36.0 or 38.1 <= temp <= 39.0: score += 1
+
+    # Level Determination
+    level = "low"
+    if score >= 7: level = "critical"
+    elif score >= 5: level = "high"
+    elif score >= 3: level = "medium"
+    
+    return {"score": score, "level": level}

@@ -18,6 +18,8 @@ import json
 import time
 import datetime
 import uuid
+import secrets
+from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, Literal
 
 from fastapi import HTTPException
@@ -468,6 +470,17 @@ class ClinicalIntelligenceOrchestrator:
         encounter.status = "confirmed"
         encounter.confirmed_at = datetime.datetime.utcnow()
         encounter.confirmed_by_id = user_id
+
+        # 7. Auto-create Patient Portal Link
+        from ..models import PatientPortalLink
+        portal_token = secrets.token_urlsafe(32)
+        portal_link = PatientPortalLink(
+            encounter_id=encounter_id,
+            patient_id=encounter.patient_id,
+            token=portal_token,
+            expires_at=datetime.datetime.utcnow() + timedelta(hours=48)
+        )
+        self.db.add(portal_link)
 
         # Audit log
         self._log_audit(user_id, "confirm_encounter", "AIEncounter", encounter_id)

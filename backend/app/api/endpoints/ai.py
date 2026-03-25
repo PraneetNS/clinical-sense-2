@@ -10,6 +10,11 @@ from ...api import deps
 
 router = APIRouter()
 
+# In-memory scribe buffer (patient_id:session_uuid -> {"text": "", "last_update": float})
+SCRIBE_BUFFER = {}
+# Simple rate limiting (user_id -> list of timestamps)
+SCRIBE_LIMITS = {}
+
 @router.post("/differential", response_model=ai_schemas.DifferentialDiagnosisOutput)
 async def generate_differential(
     input_data: ai_schemas.DifferentialDiagnosisInput,
@@ -80,21 +85,35 @@ async def medico_legal_review(
 async def transcribe_audio(
     request: Request,
     file: UploadFile = File(...),
+    session_id: str = None, 
+    patient_id: int = None,
     current_user: models.User = Depends(deps.get_current_user)
 ):
     """
-    Transcribes audio using Groq Whisper model.
+    Transcribes audio using Groq Whisper model with session buffering.
+    Rate limited: 10 calls/minute.
     """
     import os
     import tempfile
     import groq
+    import time
     from ...core.config import settings
+
+    # 1. Rate Limiting (Simple)
+    now = time.time()
+    user_ts = SCRIBE_LIMITS.get(current_user.id, [])
+    user_ts = [ts for ts in user_ts if now - ts < 60]
+    if len(user_ts) >= 10:
+        raise HTTPException(status_code=429, detail="Scribe rate limit exceeded (10/min)")
+    user_ts.append(now)
+    SCRIBE_LIMITS[current_user.id] = user_ts
 
     if not settings.GROQ_API_KEY:
         raise HTTPException(status_code=500, detail="Groq API key not configured")
 
     client = groq.AsyncGroq(api_key=settings.GROQ_API_KEY)
     
+    # Save Uploaded File
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
         content = await file.read()
         temp_audio.write(content)
@@ -107,11 +126,82 @@ async def transcribe_audio(
                 model="whisper-large-v3",
                 response_format="verbose_json",
             )
-        return {"text": transcription.text, "status": "success"}
+            
+        transcript = transcription.text
+        
+        # 2. Buffering
+        if session_id and patient_id:
+            buffer_key = f"{patient_id}:{session_id}"
+            session_data = SCRIBE_BUFFER.get(buffer_key, {"text": "", "last_update": now})
+            session_data["text"] += " " + transcript
+            session_data["last_update"] = now
+            SCRIBE_BUFFER[buffer_key] = session_data
+            
+            # Cleanup old sessions (> 30 mins)
+            for k in list(SCRIBE_BUFFER.keys()):
+                if now - SCRIBE_BUFFER[k]["last_update"] > 1800:
+                    del SCRIBE_BUFFER[k]
+                    
+            return {
+                "transcript": transcript, 
+                "accumulated_text": session_data["text"].strip(),
+                "status": "success"
+            }
+            
+        return {"transcript": transcript, "status": "success"}
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         os.remove(temp_audio_path)
+
+@router.get("/portal/{token}")
+async def get_portal_summary(token: str, db: Session = Depends(deps.get_db)):
+    """
+    Publicly accessible endpoint for the patient portal.
+    Requires no auth, only a valid non-expired token.
+    """
+    from ...models import PatientPortalLink, AIEncounter, Patient
+    from datetime import datetime
+    
+    link = db.query(PatientPortalLink).filter(PatientPortalLink.token == token).first()
+    if not link:
+        return {"expired": True, "error": "Invalid or expired link."}
+        
+    if link.expires_at < datetime.utcnow():
+        return {"expired": True, "error": "This link has expired for your security."}
+        
+    # Mark viewed
+    if not link.accessed_at:
+        link.accessed_at = datetime.utcnow()
+        db.commit()
+        
+    encounter = link.encounter
+    patient = link.patient
+    
+    # Extract quality report components for the summary
+    report = encounter.quality_report
+    patient_summary = "Please contact your provider for details."
+    
+    if report and report.differential_output:
+         patient_summary = report.differential_output.get("patient_summary", patient_summary)
+    
+    # If no specific patient summary found, fall back to SOAP plan
+    if patient_summary == "Please contact your provider for details.":
+        try:
+            soap = json.loads(encounter.soap_note)
+            patient_summary = soap.get("plan", patient_summary)
+        except:
+            pass
+
+    return {
+        "patient_first_name": patient.name.split()[0] if patient.name else "Patient",
+        "visit_date": encounter.encounter_date.strftime("%B %d, %Y") if encounter.encounter_date else "Unknown",
+        "summary": patient_summary,
+        "medications": [m.name for m in encounter.medications],
+        "followup_instructions": "Review the summary above for follow-up details.",
+        "expired": False
+    }
 
 from pydantic import BaseModel
 

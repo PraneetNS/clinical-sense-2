@@ -339,6 +339,7 @@ class ClinicalAIInsight(Base):
     red_flags = Column(Text, nullable=True) # JSON list
     suggestions = Column(Text, nullable=True) # JSON list
     missing_info = Column(Text, nullable=True) # JSON list
+    news2_score = Column(Integer, nullable=True)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
@@ -814,3 +815,17 @@ class PatientPortalLink(Base):
     
     encounter = relationship("AIEncounter", foreign_keys=[encounter_id])
     patient = relationship("Patient", foreign_keys=[patient_id])
+
+class DeteriorationAlert(Base):
+    __tablename__ = "deterioration_alerts"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey("clinical_notes.id"), nullable=False)
+    score = Column(Integer, nullable=False)
+    delta = Column(Integer, nullable=False)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow)
+    acknowledged = Column(Boolean, default=False)
+    
+    patient = relationship("Patient", foreign_keys=[patient_id])
+    note = relationship("ClinicalNote", foreign_keys=[note_id])
+

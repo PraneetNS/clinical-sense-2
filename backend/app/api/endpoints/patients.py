@@ -146,3 +146,44 @@ async def get_patient_report_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=patient_report_{patient_id}.pdf"}
     )
+
+@router.get("/{patient_id}/alerts")
+def get_patient_alerts(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Fetch active deterioration alerts for a patient."""
+    from ...models import DeteriorationAlert
+    # Security check is implicitly done if PatientService was called, but let's be safe
+    PatientService.get_patient(db, patient_id, user_id=current_user.id)
+    
+    return db.query(DeteriorationAlert).filter(
+        DeteriorationAlert.patient_id == patient_id,
+        DeteriorationAlert.is_acknowledged == False
+    ).order_by(DeteriorationAlert.created_at.desc()).all()
+
+@router.post("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Acknowledge a deterioration alert."""
+    from ...models import DeteriorationAlert
+    import datetime
+    
+    alert = db.query(DeteriorationAlert).filter(DeteriorationAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+        
+    # Security check: User must own the patient
+    PatientService.get_patient(db, alert.patient_id, user_id=current_user.id)
+    
+    alert.is_acknowledged = True
+    alert.acknowledged_at = datetime.datetime.utcnow()
+    alert.acknowledged_by_id = current_user.id
+    db.commit()
+    
+    return {"status": "success"}
+

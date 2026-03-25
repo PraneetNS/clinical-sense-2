@@ -15,6 +15,33 @@ class AIService:
             self.client = None
         else:
             self.client = groq.Groq(api_key=settings.GROQ_API_KEY)
+
+    def parse_vitals_from_text(self, text: str) -> Dict[str, Any]:
+        """
+        Extracts vitals from clinical text using regex.
+        Returns a dict of vitals.
+        """
+        import re
+        vitals = {}
+        patterns = {
+            "resp_rate": [r"RR\s*[:=]?\s*(\d+)", r"respiration\s*rate\s*[:=]?\s*(\d+)"],
+            "spo2": [r"SpO2\s*[:=]?\s*(\d+)%?", r"oxygen\s*saturation\s*[:=]?\s*(\d+)%?"],
+            "blood_pressure_sys": [r"BP\s*[:=]?\s*(\d+)/(\d+)", r"blood\s*pressure\s*[:=]?\s*(\d+)/(\d+)"],
+            "heart_rate": [r"HR\s*[:=]?\s*(\d+)", r"heart\s*rate\s*[:=]?\s*(\d+)", r"Pulse\s*[:=]?\s*(\d+)"],
+            "temp_c": [r"Temp\s*[:=]?\s*(\d+\.?\d*)\s*[cC]", r"temperature\s*[:=]?\s*(\d+\.?\d*)\s*[cC]"],
+        }
+        
+        for key, regexes in patterns.items():
+            for regex in regexes:
+                match = re.search(regex, text, re.IGNORECASE)
+                if match:
+                    if key == "blood_pressure_sys":
+                        vitals["blood_pressure_sys"] = float(match.group(1))
+                        vitals["blood_pressure_dia"] = float(match.group(2))
+                    else:
+                        vitals[key] = float(match.group(1))
+                    break
+        return vitals
             
     async def structure_clinical_note(self, text: str, note_type: str = "SOAP", encounter_date: Optional[str] = None) -> dict:
         """
