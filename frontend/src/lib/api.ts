@@ -136,7 +136,7 @@ export const aiApi = {
     differential: (data: any) => api.post('/ai/differential', data),
     riskAnalysis: (data: any) => api.post('/ai/risk_analysis', data),
     medicoLegal: (data: any) => api.post('/ai/medico_legal', data),
-    transcribe: (formData: FormData) => api.post('/ai/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    transcribe: (formData: FormData, config?: any) => api.post('/ai/transcribe', formData, { ...config, headers: { 'Content-Type': 'multipart/form-data', ...(config?.headers || {}) } }),
     challenge: (encounterId: string | number, data: { diagnosis_name: string; icd_code: string }) =>
         api.post(`/ai/differential/${encounterId}/challenge`, data),
 };

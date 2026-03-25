@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
@@ -22,7 +22,8 @@ import {
     ChevronLeft, User, Shield, AlertTriangle, Pill,
     ClipboardList, LayoutDashboard, FileText, CheckSquare,
     CreditCard, Stethoscope, AlertCircle, Clock, Plus, Edit2, Trash2, Calendar, Search, RefreshCw, TriangleAlert, Download,
-    ClipboardCheck, History as HistoryIcon, Brain, Hospital
+    ClipboardCheck, History as HistoryIcon, Brain, Hospital,
+    Activity, Bell, CheckCircle
 } from 'lucide-react';
 
 export default function PatientDetailPage() {
@@ -63,6 +64,8 @@ export default function PatientDetailPage() {
     const [workflowDashboard, setWorkflowDashboard] = useState<any>(null);
     const [isRecheckingDischarge, setIsRecheckingDischarge] = useState(false);
     const [timeline, setTimeline] = useState<any[]>([]);
+    const [alerts, setAlerts] = useState<any[]>([]);
+    const [isAcknowledging, setIsAcknowledging] = useState<number | null>(null);
 
     const isLocked = patient?.status === 'Closed' && user?.role !== 'admin';
 
@@ -75,17 +78,18 @@ export default function PatientDetailPage() {
         try {
             setLoading(true);
             setError(null);
-            const [pRes, hRes, tRes] = await Promise.all([
+            const [pRes, hRes, tRes, aRes] = await Promise.all([
                 patientsApi.getById(id as string),
                 clinicalApi.getHistory(id as string),
-                patientsApi.getTimeline(id as string)
+                patientsApi.getTimeline(id as string),
+                patientsApi.getAlerts(id as string)
             ]);
             setTimeline(tRes.data);
             setPatient(pRes.data);
-            setNotes(tRes.data.filter((e: any) => e.type === 'note')); // Extract notes from timeline
+            setNotes(tRes.data.filter((e: any) => e.type === 'note')); 
             setMedicalHistory(hRes.data);
+            setAlerts(aRes.data);
 
-            // Sync clinical data states from patient response
             if (pRes.data.medications) setMedications(pRes.data.medications);
             if (pRes.data.procedures) setProcedures(pRes.data.procedures);
             if (pRes.data.documents) setDocuments(pRes.data.documents);
@@ -288,15 +292,29 @@ export default function PatientDetailPage() {
                 setMedicalHistory(resHist.data);
             }
 
-            // Refresh timeline on any change
-            const resTimeline = await patientsApi.getTimeline(id as string);
+            // Refresh timeline and alerts on any change
+            const [resTimeline, resAlerts] = await Promise.all([
+                patientsApi.getTimeline(id as string),
+                patientsApi.getAlerts(id as string)
+            ]);
             setTimeline(resTimeline.data);
+            setAlerts(resAlerts.data);
         } catch (err: any) {
             console.error("Failed to submit form", err);
             showToast(getErrorMessage(err) || "Action failed", "error");
+        }
+    };
+
+    const handleAcknowledgeAlert = async (alertId: number) => {
+        setIsAcknowledging(alertId);
+        try {
+            await patientsApi.acknowledgeAlert(alertId);
+            setAlerts(prev => prev.filter(a => a.id !== alertId));
+            showToast("Deterioration alert acknowledged.", "success");
+        } catch (err: any) {
+            showToast(`Failed to acknowledge alert: ${getErrorMessage(err)}`, "error");
         } finally {
-            setIsSubmitting(false);
-            closeModal();
+            setIsAcknowledging(null);
         }
     };
 
@@ -448,6 +466,7 @@ export default function PatientDetailPage() {
         { id: 'tasks', label: 'Tasks', icon: CheckSquare },
         { id: 'billing', label: 'Billing', icon: CreditCard },
         { id: 'admissions', label: 'Admissions', icon: Clock },
+        { id: 'alerts', label: 'Safety (NEWS2)', icon: Bell },
         { id: 'report', label: 'Final Report', icon: ClipboardCheck },
     ];
 
@@ -525,6 +544,32 @@ export default function PatientDetailPage() {
             )}
 
             <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
+                {/* Deterioration Alert Banner */}
+                {alerts.length > 0 && (
+                    <div className="mb-8 bg-red-600 rounded-3xl p-6 text-white shadow-2xl shadow-red-600/20 flex flex-col md:flex-row items-center justify-between gap-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                        <div className="flex items-center gap-5">
+                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                                <Activity size={32} className="text-white animate-pulse" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black mb-1 flex items-center gap-2">
+                                    Deterioration Alert (NEWS2: {alerts[0].news2_score})
+                                </h2>
+                                <p className="text-white/80 text-sm font-medium max-w-lg leading-relaxed">
+                                    {alerts[0].reason} Detected on {new Date(alerts[0].created_at).toLocaleString()}. Immediate clinician review required.
+                                </p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => handleAcknowledgeAlert(alerts[0].id)}
+                            disabled={isAcknowledging === alerts[0].id}
+                            className="bg-white text-red-600 px-8 py-3 rounded-2xl font-black text-sm shadow-xl hover:bg-red-50 transition-all flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isAcknowledging === alerts[0].id ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                            Acknowledge & Clear
+                        </button>
+                    </div>
+                )}
                 {/* Tabs Navigation */}
                 <div className="flex overflow-x-auto gap-1 bg-white p-1 rounded-xl shadow-sm border border-slate-100 mb-8 sticky top-[88px] z-10 mx-auto w-fit">
                     {tabs.map((tab) => {
@@ -1350,6 +1395,103 @@ export default function PatientDetailPage() {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* SAFETY / NEWS2 TAB */}
+                    {activeTab === 'alerts' && (
+                        <div className="space-y-6 max-w-4xl mx-auto">
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl">
+                                <div className="flex justify-between items-center mb-8">
+                                    <div>
+                                        <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                                            <Bell size={24} className="text-red-500" /> Patient Safety Monitor
+                                        </h2>
+                                        <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em] mt-1">NEWS2 Deterioration Tracking</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
+                                        <Activity size={16} className="text-teal-600" />
+                                        <span className="text-xs font-black text-slate-600">Active Monitoring Enabled</span>
+                                    </div>
+                                </div>
+
+                                {alerts.length === 0 ? (
+                                    <div className="py-20 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+                                        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                            <CheckCircle size={32} className="text-emerald-500" />
+                                        </div>
+                                        <h3 className="text-lg font-black text-slate-900">No Active Alerts</h3>
+                                        <p className="text-slate-400 text-sm max-w-xs mx-auto mt-2 leading-relaxed">
+                                            Patient is currently stable. No deterioration triggers have been detected in recent notes.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {alerts.map((alert) => (
+                                                <div key={alert.id} className="p-6 bg-white border border-slate-100 rounded-3xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                                    <div className={`absolute top-0 left-0 w-1.5 h-full ${alert.news2_score >= 7 ? 'bg-red-600' : 'bg-amber-500'}`} />
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex gap-4">
+                                                            <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black ${alert.news2_score >= 7 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                <span className="text-[10px] leading-none mb-1 opacity-60">NEWS2</span>
+                                                                <span className="text-xl leading-none">{alert.news2_score}</span>
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-black text-slate-900 text-lg mb-1">{alert.reason}</h4>
+                                                                <div className="flex items-center gap-3 text-xs text-slate-400 font-bold">
+                                                                    <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.created_at).toLocaleString()}</span>
+                                                                    <span className="flex items-center gap-1"><FileText size={12} /> Triggered by AI Audit</span>
+                                                                </div>
+                                                                {alert.acknowledged_at && (
+                                                                    <div className="mt-3 flex items-center gap-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg w-fit">
+                                                                        <CheckCircle size={12} /> Acknowledged by Provider
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        {!alert.acknowledged_at && (
+                                                            <button 
+                                                                onClick={() => handleAcknowledgeAlert(alert.id)}
+                                                                className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl font-black text-xs hover:bg-slate-800 shadow-xl shadow-slate-900/10 transition-all active:scale-95"
+                                                            >
+                                                                Acknowledge
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <Shield size={22} className="text-teal-400" />
+                                    <h3 className="text-lg font-black tracking-tight">Clinical Governance Notice</h3>
+                                </div>
+                                <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                                    The Deterioration Warning System uses the NEWS2 (National Early Warning Score 2) standard. Scores are automatically calculated by extracting physiological parameters from clinical notes.
+                                </p>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                                        <p className="text-[10px] font-black text-teal-400 uppercase tracking-widest mb-1">Low Risk</p>
+                                        <p className="text-xl font-black">0-4</p>
+                                        <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase leading-tight">Routine Observation</p>
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                                        <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Medium Risk</p>
+                                        <p className="text-xl font-black">5-6</p>
+                                        <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase leading-tight">Urgent Review</p>
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                                        <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">High Risk</p>
+                                        <p className="text-xl font-black">7+</p>
+                                        <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase leading-tight">Emergency Response</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 
