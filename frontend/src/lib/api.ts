@@ -141,6 +141,11 @@ export const aiApi = {
         api.post(`/ai/differential/${encounterId}/challenge`, data),
 };
 
+export const twilioApi = {
+    initiateCall: (patientId: number, encounterId: number) => api.post('/twilio/initiate-call', { patient_id: patientId, encounter_id: encounterId }),
+    cancelFollowUp: (encounterId: string | number) => api.post(`/twilio/follow-up/${encounterId}/cancel`),
+};
+
 export const workflowApi = {
     getDashboard: (patientId: string | number) => api.get(`/workflow/patients/${patientId}/workflow-dashboard`),
     triggerAnalysis: (noteId: string | number) => api.post(`/workflow/notes/${noteId}/analyze`),

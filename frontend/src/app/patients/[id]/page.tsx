@@ -23,7 +23,7 @@ import {
     ClipboardList, LayoutDashboard, FileText, CheckSquare,
     CreditCard, Stethoscope, AlertCircle, Clock, Plus, Edit2, Trash2, Calendar, Search, RefreshCw, TriangleAlert, Download,
     ClipboardCheck, History as HistoryIcon, Brain, Hospital,
-    Activity, Bell, CheckCircle
+    Activity, Bell, CheckCircle, Phone
 } from 'lucide-react';
 
 export default function PatientDetailPage() {
@@ -832,7 +832,8 @@ export default function PatientDetailPage() {
                                                         event.type === 'admission' ? <Hospital size={24} /> :
                                                             event.type === 'medication' ? <Pill size={24} /> :
                                                                 event.type === 'procedure' ? <Stethoscope size={24} /> :
-                                                                    <Clock size={24} />}
+                                                                    event.note_type === 'phone_followup' ? <Phone size={24} /> :
+                                                                        <Clock size={24} />}
                                                 </div>
                                                 <div className="w-0.5 h-full bg-slate-100 min-h-[20px]"></div>
                                             </div>
@@ -897,6 +898,11 @@ export default function PatientDetailPage() {
                                                             <span className="text-xs font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md border border-teal-100">
                                                                 {note.note_type}
                                                             </span>
+                                                            {note.note_type === 'phone_followup' && (
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100 flex items-center gap-1">
+                                                                    <Phone size={10} /> Phone Follow-up
+                                                                </span>
+                                                            )}
                                                             {note.structured_content && (
                                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100 flex items-center gap-1">
                                                                     <Clock size={10} /> AI Structured

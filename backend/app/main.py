@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.exceptions import AppError, app_error_handler, general_exception_handler
 from .db.session import engine, SessionLocal
-from .api.endpoints import auth, notes, patients, clinical, tasks, ai, copilot, hos, workflow, communication, hospital, encounter, admin, prescriptions
+from .api.endpoints import auth, notes, patients, clinical, tasks, ai, copilot, hos, workflow, communication, hospital, encounter, admin, prescriptions, twilio
 from .models import Base
 from .core.ratelimit import limiter
 from .core.config import Environment
@@ -207,6 +207,7 @@ app.include_router(copilot.router, tags=["copilot"])
 app.include_router(encounter.router, prefix=settings.API_V1_STR + "/ai", tags=["clinical-intelligence"])
 app.include_router(admin.router, prefix=settings.API_V1_STR + "/admin", tags=["admin-ai-governance"])
 app.include_router(prescriptions.router, prefix=settings.API_V1_STR + "/prescriptions", tags=["prescriptions"])
+app.include_router(twilio.router, prefix=settings.API_V1_STR + "/twilio", tags=["twilio-ai"])
 
 # Development entry point (only runs when executed directly, not when imported by gunicorn)
 if __name__ == "__main__":

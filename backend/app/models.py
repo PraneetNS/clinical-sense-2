@@ -829,3 +829,19 @@ class DeteriorationAlert(Base):
     patient = relationship("Patient", foreign_keys=[patient_id])
     note = relationship("ClinicalNote", foreign_keys=[note_id])
 
+class FollowUpCall(Base):
+    __tablename__ = "follow_up_calls"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    encounter_id = Column(Integer, ForeignKey("ai_encounters.id"), nullable=False, index=True)
+    phone_number = Column(String, nullable=False)
+    scheduled_at = Column(DateTime, nullable=False)
+    called_at = Column(DateTime, nullable=True)
+    transcript = Column(Text, nullable=True)
+    note_id_created = Column(Integer, ForeignKey("clinical_notes.id"), nullable=True)
+    status = Column(String, default="Scheduled") # Scheduled, In Progress, Completed, Failed, Cancelled
+    
+    patient = relationship("Patient", foreign_keys=[patient_id])
+    encounter = relationship("AIEncounter", foreign_keys=[encounter_id])
+    created_note = relationship("ClinicalNote", foreign_keys=[note_id_created])
+

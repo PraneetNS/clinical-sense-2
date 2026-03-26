@@ -16,6 +16,32 @@ class AIService:
         else:
             self.client = groq.Groq(api_key=settings.GROQ_API_KEY)
 
+    async def transcribe_audio(self, audio_content: bytes, filename: str = "audio.webm") -> Dict[str, Any]:
+        """
+        Transcribes clinical audio using Groq Whisper.
+        """
+        if not self.client:
+            return {"transcript": "Transcription blurred (AI Offline)", "confidence": 0.0}
+            
+        try:
+            # We must pass a file-like object with a name
+            from io import BytesIO
+            audio_file = BytesIO(audio_content)
+            audio_file.name = filename
+            
+            transcription = self.client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-large-v3",
+                response_format="verbose_json",
+            )
+            return {
+                "transcript": transcription.text,
+                "confidence": getattr(transcription, "avg_logprob", 0.0) # approx
+            }
+        except Exception as e:
+            logger.error(f"Transcription failed: {str(e)}")
+            return {"transcript": "", "confidence": 0.0, "error": str(e)}
+
     def parse_vitals_from_text(self, text: str) -> Dict[str, Any]:
         """
         Extracts vitals from clinical text using regex.

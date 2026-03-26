@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { encounterApi, patientsApi, aiApi, getErrorMessage } from '@/lib/api';
+import { encounterApi, patientsApi, aiApi, twilioApi, getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
@@ -144,6 +144,8 @@ export default function EncounterGeneratorPage() {
 
     // Context & Actions
     const [sendingPortalLink, setSendingPortalLink] = useState(false);
+    const [followUpScheduled, setFollowUpScheduled] = useState(false);
+    const [cancellingFollowUp, setCancellingFollowUp] = useState(false);
 
     /* load patient */
     useEffect(() => {
@@ -290,6 +292,7 @@ export default function EncounterGeneratorPage() {
         try {
             await encounterApi.confirm(encounter.encounter_id);
             setEncounter(e => e ? { ...e, is_confirmed: true, status: 'confirmed' } : e);
+            setFollowUpScheduled(true);
             showToast('Encounter confirmed. All data saved to patient record.', 'success');
         } catch (err: any) {
             showToast(getErrorMessage(err) || 'Confirmation failed', 'error');
@@ -313,6 +316,20 @@ export default function EncounterGeneratorPage() {
             showToast(`Challenge failed: ${getErrorMessage(err)}`, 'error');
         } finally {
             setChallengingId(null);
+        }
+    };
+
+    const handleCancelFollowUp = async () => {
+        if (!encounter) return;
+        setCancellingFollowUp(true);
+        try {
+            await twilioApi.cancelFollowUp(encounter.encounter_id);
+            setFollowUpScheduled(false);
+            showToast('Follow-up call cancelled.', 'success');
+        } catch (err: any) {
+            showToast(`Failed to cancel follow-up: ${getErrorMessage(err)}`, 'error');
+        } finally {
+            setCancellingFollowUp(false);
         }
     };
 
@@ -378,7 +395,19 @@ export default function EncounterGeneratorPage() {
                         </>
                     )}
                     {encounter?.is_confirmed && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
+                            {followUpScheduled && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 font-black text-[10px] rounded-xl border border-amber-200 uppercase tracking-widest shadow-sm">
+                                    <Clock size={12} className="animate-pulse" /> 24h Call Scheduled
+                                    <button 
+                                        onClick={handleCancelFollowUp}
+                                        disabled={cancellingFollowUp}
+                                        className="ml-2 pl-2 border-l border-amber-200 text-amber-500 hover:text-red-500 transition-colors"
+                                    >
+                                        {cancellingFollowUp ? '...' : 'Cancel'}
+                                    </button>
+                                </div>
+                            )}
                              <button
                                 onClick={handleSendPortalLink}
                                 disabled={sendingPortalLink}

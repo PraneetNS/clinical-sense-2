@@ -37,6 +37,7 @@ from ..models import (
     AIGeneratedBilling,
     AITimelineEvent,
     AIFollowupRecommendation,
+    FollowUpCall,
     Medication,
     Procedure,
     MedicalHistory,
@@ -481,6 +482,24 @@ class ClinicalIntelligenceOrchestrator:
             expires_at=datetime.datetime.utcnow() + timedelta(hours=48)
         )
         self.db.add(portal_link)
+
+        # 8. Schedule AI Follow-up Phone Call (T+24h)
+        # Fetch patient phone number
+        patient_record = self.db.query(Patient).filter(Patient.id == encounter.patient_id).first()
+        if patient_record and patient_record.phone:
+            followup_call = FollowUpCall(
+                patient_id=encounter.patient_id,
+                encounter_id=encounter_id,
+                phone_number=patient_record.phone,
+                scheduled_at=datetime.datetime.utcnow() + timedelta(hours=24),
+                status="Scheduled"
+            )
+            self.db.add(followup_call)
+            self.db.flush()
+            
+            # TODO: Trigger background task (Celery or background_tasks)
+            # Example: background_tasks.add_task(initiate_twilio_call, followup_call_id=followup_call.id)
+            logger.info(f"Follow-up call scheduled for encounter {encounter_id} at {followup_call.scheduled_at}")
 
         # Audit log
         self._log_audit(user_id, "confirm_encounter", "AIEncounter", encounter_id)

@@ -276,6 +276,7 @@ async def get_encounter(
         follow_up_days=encounter.follow_up_days,
         case_status=encounter.case_status,
         billing_complexity=encounter.billing_complexity or "medium",
+        pipeline_statuses=_safe_json_loads(encounter.pipeline_statuses, []),
         created_at=encounter.created_at,
     )
 
